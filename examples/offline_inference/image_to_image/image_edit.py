@@ -115,6 +115,23 @@ def parse_args() -> argparse.Namespace:
         help="Number of GPUs used for ulysses sequence parallelism.",
     )
 
+    parser.add_argument(
+        "--quantization",
+        type=str,
+        default=None,
+        choices=["ascend", None],
+        help=(
+            "Method used to quantize the weights."
+            "Options: ascend (quantization using MineIE-SD), None."
+            "Default: None (no quantization)."
+        ),
+    )
+    parser.add_argument(
+        "--quant_des_path",
+        type=str,
+        default=None,
+        help="pre-quantized weight path.",
+    )
     return parser.parse_args()
 
 
@@ -208,6 +225,8 @@ def main():
         cache_backend=args.cache_backend,
         cache_config=cache_config,
         parallel_config=parallel_config,
+        quantization=args.quantization,
+        quant_des_path=args.quant_des_path
     )
     print("Pipeline loaded")
 
