@@ -26,9 +26,26 @@ from vllm_omni.diffusion.distributed.parallel_state import (
     get_sequence_parallel_world_size,
     get_sp_group,
 )
+from vllm_omni.utils.platform_utils import is_npu
+if is_npu:
+    import torch_npu
+    from mindiesd import attention_forward
 
 logger = init_logger(__name__)
 
+
+class AdaLayerNorm(nn.Module):
+    def __init__(self, hidden_size, eps=1e-6):
+        super().__init__()
+        self.hidden_size = hidden_size
+        self.eps = eps
+
+    def forward(self, x, mod_params):
+        shift, scale, gate = mod_params.chunk(3, dim=-1)
+        scale = (1 + scale.unsqueeze(1))
+        shift = shift.unsqueeze(1)
+        return torch_npu.npu_layer_norm_eval(
+                x, normalized_shape=[self.hidden_size], weight=scale, bias=shift, eps=self.eps), gate.unsqueeze(1)
 
 def apply_rotary_emb_qwen(
     x: torch.Tensor,
@@ -71,9 +88,19 @@ def apply_rotary_emb_qwen(
 
         return out
     else:
-        x_rotated = torch.view_as_complex(x.float().reshape(*x.shape[:-1], -1, 2))
-        freqs_cis = freqs_cis.unsqueeze(1)
-        x_out = torch.view_as_real(x_rotated * freqs_cis).flatten(3)
+        if is_npu:
+            cos = freqs_cis.real
+            sin = freqs_cis.imag
+            seqlen = cos.shape[0]
+            
+            cos = cos.unsqueeze(0).unsqueeze(2).unsqueeze(-1).expand(-1, -1, -1, -1, 2).reshape(1, seqlen, 1, -1)
+            sin = sin.unsqueeze(0).unsqueeze(2).unsqueeze(-1).expand(-1, -1, -1, -1, 2).reshape(1, seqlen, 1, -1)
+
+            x_out = torch_npu.npu_rotary_mul(x, cos, sin, 'interleave')
+        else:
+            x_rotated = torch.view_as_complex(x.float().reshape(*x.shape[:-1], -1, 2))
+            freqs_cis = freqs_cis.unsqueeze(1)
+            x_out = torch.view_as_real(x_rotated * freqs_cis).flatten(3)
 
         return x_out.type_as(x)
 
@@ -325,11 +352,15 @@ class QwenImageCrossAttention(nn.Module):
         joint_value = torch.cat([txt_value, img_value], dim=1)
 
         # Compute joint attention
-        joint_hidden_states = self.attn(
-            joint_query,
-            joint_key,
-            joint_value,
-        )
+        if is_npu:
+            joint_hidden_states = attention_forward(joint_query, joint_key, joint_value,
+            opt_mode="manual", op_type="fused_attn_score", layout="BNSD")
+        else:
+            joint_hidden_states = self.attn(
+                joint_query,
+                joint_key,
+                joint_value,
+            )
         joint_hidden_states = joint_hidden_states.flatten(2, 3)
         joint_hidden_states = joint_hidden_states.to(joint_query.dtype)
 
@@ -368,7 +399,10 @@ class QwenImageTransformerBlock(nn.Module):
             nn.SiLU(),
             nn.Linear(dim, 6 * dim, bias=True),  # For scale, shift, gate for norm1 and norm2
         )
-        self.img_norm1 = nn.LayerNorm(dim, elementwise_affine=False, eps=eps)
+        if is_npu:
+            self.img_norm1 = AdaLayerNorm(dim, eps=eps)
+        else:
+            self.img_norm1 = nn.LayerNorm(dim, elementwise_affine=False, eps=eps)
         self.attn = QwenImageCrossAttention(
             dim=dim,
             num_heads=num_attention_heads,
@@ -376,7 +410,10 @@ class QwenImageTransformerBlock(nn.Module):
             context_pre_only=False,
             head_dim=attention_head_dim,
         )
-        self.img_norm2 = nn.LayerNorm(dim, elementwise_affine=False, eps=eps)
+        if is_npu:
+            self.img_norm2 = AdaLayerNorm(dim, eps=eps)
+        else:
+            self.img_norm2 = nn.LayerNorm(dim, elementwise_affine=False, eps=eps)
         self.img_mlp = FeedForward(dim=dim, dim_out=dim, activation_fn="gelu-approximate")
 
         # Text processing modules
@@ -384,9 +421,13 @@ class QwenImageTransformerBlock(nn.Module):
             nn.SiLU(),
             nn.Linear(dim, 6 * dim, bias=True),  # For scale, shift, gate for norm1 and norm2
         )
-        self.txt_norm1 = nn.LayerNorm(dim, elementwise_affine=False, eps=eps)
-        # Text doesn't need separate attention - it's handled by img_attn joint computation
-        self.txt_norm2 = nn.LayerNorm(dim, elementwise_affine=False, eps=eps)
+        if is_npu:
+            self.txt_norm1 = AdaLayerNorm(dim, eps=eps)
+            self.txt_norm2 = AdaLayerNorm(dim, eps=eps)
+        else:
+            self.txt_norm1 = nn.LayerNorm(dim, elementwise_affine=False, eps=eps)
+            # Text doesn't need separate attention - it's handled by img_attn joint computation
+            self.txt_norm2 = nn.LayerNorm(dim, elementwise_affine=False, eps=eps)
         self.txt_mlp = FeedForward(dim=dim, dim_out=dim, activation_fn="gelu-approximate")
 
         self.zero_cond_t = zero_cond_t
@@ -450,12 +491,18 @@ class QwenImageTransformerBlock(nn.Module):
         txt_mod1, txt_mod2 = txt_mod_params.chunk(2, dim=-1)  # Each [B, 3*dim]
 
         # Process image stream - norm1 + modulation
-        img_normed = self.img_norm1(hidden_states)
-        img_modulated, img_gate1 = self._modulate(img_normed, img_mod1, modulate_index)
+        if is_npu:
+            img_modulated, img_gate1 = self.img_norm1(hidden_states, img_mod1)
+        else:
+            img_normed = self.img_norm1(hidden_states)
+            img_modulated, img_gate1 = self._modulate(img_normed, img_mod1)
 
         # Process text stream - norm1 + modulation
-        txt_normed = self.txt_norm1(encoder_hidden_states)
-        txt_modulated, txt_gate1 = self._modulate(txt_normed, txt_mod1)
+        if is_npu:
+            txt_modulated, txt_gate1 = self.txt_norm1(encoder_hidden_states, txt_mod1)
+        else:
+            txt_normed = self.txt_norm1(encoder_hidden_states)
+            txt_modulated, txt_gate1 = self._modulate(txt_normed, txt_mod1)
 
         # Use QwenAttnProcessor2_0 for joint attention computation
         # This directly implements the DoubleStreamLayerMegatron logic:
@@ -480,14 +527,20 @@ class QwenImageTransformerBlock(nn.Module):
         encoder_hidden_states = encoder_hidden_states + txt_gate1 * txt_attn_output
 
         # Process image stream - norm2 + MLP
-        img_normed2 = self.img_norm2(hidden_states)
-        img_modulated2, img_gate2 = self._modulate(img_normed2, img_mod2, modulate_index)
+        if is_npu:
+            img_modulated2, img_gate2 = self.img_norm2(hidden_states, img_mod2)
+        else:
+            img_normed2 = self.img_norm2(hidden_states)
+            img_modulated2, img_gate2 = self._modulate(img_normed2, img_mod2)
         img_mlp_output = self.img_mlp(img_modulated2)
         hidden_states = hidden_states + img_gate2 * img_mlp_output
 
         # Process text stream - norm2 + MLP
-        txt_normed2 = self.txt_norm2(encoder_hidden_states)
-        txt_modulated2, txt_gate2 = self._modulate(txt_normed2, txt_mod2)
+        if is_npu:
+            txt_modulated2, txt_gate2 = self.txt_norm2(encoder_hidden_states, txt_mod2)
+        else:
+            txt_normed2 = self.txt_norm2(encoder_hidden_states)
+            txt_modulated2, txt_gate2 = self._modulate(txt_normed2, txt_mod2)
         txt_mlp_output = self.txt_mlp(txt_modulated2)
         encoder_hidden_states = encoder_hidden_states + txt_gate2 * txt_mlp_output
 

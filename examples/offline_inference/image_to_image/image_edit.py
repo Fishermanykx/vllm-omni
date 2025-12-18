@@ -22,6 +22,14 @@ Usage (multiple images):
         --cfg_scale 4.0 \
         --guidance_scale 1.0
 
+Usage (multiple images):
+    python image_edit.py \
+        --image input1.png input2.png input3.png \
+        --prompt "Combine these images into a single scene" \
+        --output output_image_edit.png \
+        --num_inference_steps 50 \
+        --cfg_scale 4.0
+
 For more options, run:
     python image_edit.py --help
 """
@@ -132,6 +140,23 @@ def parse_args() -> argparse.Namespace:
         help="Number of GPUs used for ulysses sequence parallelism.",
     )
 
+    parser.add_argument(
+        "--quantization",
+        type=str,
+        default=None,
+        choices=["ascend", None],
+        help=(
+            "Method used to quantize the weights."
+            "Options: ascend (quantization using MineIE-SD), None."
+            "Default: None (no quantization)."
+        ),
+    )
+    parser.add_argument(
+        "--quant_des_path",
+        type=str,
+        default=None,
+        help="pre-quantized weight path.",
+    )
     return parser.parse_args()
 
 
@@ -197,6 +222,8 @@ def main():
         cache_backend=args.cache_backend,
         cache_config=cache_config,
         parallel_config=parallel_config,
+        quantization=args.quantization,
+        quant_des_path=args.quant_des_path
     )
     print("Pipeline loaded")
 
@@ -215,6 +242,12 @@ def main():
     print(f"  Parallel configuration: ulysses_degree={args.ulysses_degree}")
     print(f"  Input image size: {input_image.size}")
     print(f"{'=' * 60}\n")
+    if isinstance(input_image, list):
+        print(f"  Number of input images: {len(input_image)}")
+        for idx, img in enumerate(input_image):
+            print(f"    Image {idx + 1} size: {img.size}")
+    else:
+        print(f"  Input image size: {input_image.size}")
 
     generation_start = time.perf_counter()
     # Generate edited image

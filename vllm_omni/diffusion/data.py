@@ -338,6 +338,10 @@ class OmniDiffusionConfig:
     # Logging
     log_level: str = "info"
 
+    # quantization
+    quantization: str | None = None   # "ascend" or None, currently only support ascend w8a8 quantization
+    quant_des_path: str | None = None # pre_quantized weight path
+
     def settle_port(self, port: int, port_inc: int = 42, max_attempts: int = 100) -> int:
         """
         Find an available port with retry logic.
