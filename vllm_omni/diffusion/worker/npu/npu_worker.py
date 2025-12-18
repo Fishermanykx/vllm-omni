@@ -59,13 +59,14 @@ class NPUWorker:
         device = torch.device(f"npu:{rank}")
         torch.npu.set_device(device)
 
-        # hack
-        # set hf_config to a fake one to avolid get attr error
-        class _FakePretrainedConfig(PretrainedConfig):
-            def __getattr__(self, name):
-                return "fake"
+        # # hack
+        # # set hf_config to a fake one to avolid get attr error
+        # class _FakePretrainedConfig(PretrainedConfig):
+        #     def __getattr__(self, name):
+        #         return "fake"
 
-        vllm_config = VllmConfig(model_config=ModelConfig(hf_config=_FakePretrainedConfig()), load_config=LoadConfig())
+        # vllm_config = VllmConfig(model_config=ModelConfig(hf_config=_FakePretrainedConfig()), load_config=LoadConfig())
+        vllm_config = VllmConfig()
         vllm_config.parallel_config.tensor_parallel_size = self.od_config.num_gpus
         set_current_vllm_config(vllm_config)
 

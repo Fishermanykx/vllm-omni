@@ -25,6 +25,10 @@ from vllm.model_executor.model_loader.weight_utils import (
 
 from vllm_omni.diffusion.data import OmniDiffusionConfig
 from vllm_omni.diffusion.registry import initialize_model
+from vllm_omni.utils.platform_utils import is_npu
+if is_npu:
+    from mindiesd import quantize
+
 
 logger = init_logger(__name__)
 
@@ -204,6 +208,16 @@ class DiffusersPipelineLoader:
             logger.debug("Loading weights on %s ...", load_device)
             # Quantization does not happen in `load_weights` but after it
             self.load_weights(model)
+
+            if od_config.quantization == "ascend":
+                print("Quantizaing model with MindIE-SD quantize")
+                quantize(
+                    model=model.transformer,
+                    quant_des_path=od_config.quant_des_path,
+                    use_nz=True,
+                )
+                model.transformer.to(target_device)
+                torch.npu.empty_cache()
         return model.eval()
 
     def load_weights(self, model: nn.Module) -> None:
