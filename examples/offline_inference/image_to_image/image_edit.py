@@ -10,7 +10,17 @@ Usage (single image):
         --prompt "Let this mascot dance under the moon, surrounded by floating stars and poetic bubbles such as 'Be Kind'" \
         --output output_image_edit.png \
         --num_inference_steps 50 \
-        --cfg_scale 4.0
+        --cfg_scale 4.0 \
+        --guidance_scale 1.0
+
+Usage (multiple images):
+    python image_edit.py \
+        --image input1.png input2.png input3.png \
+        --prompt "Combine these images into a single scene" \
+        --output output_image_edit.png \
+        --num_inference_steps 50 \
+        --cfg_scale 4.0 \
+        --guidance_scale 1.0
 
 Usage (multiple images):
     python image_edit.py \
@@ -77,7 +87,22 @@ def parse_args() -> argparse.Namespace:
         "--cfg_scale",
         type=float,
         default=4.0,
-        help="True classifier-free guidance scale specific to Qwen-Image-Edit.",
+        help=(
+            "True classifier-free guidance scale (default: 4.0). Guidance scale as defined in Classifier-Free "
+            "Diffusion Guidance. Classifier-free guidance is enabled by setting cfg_scale > 1 and providing "
+            "a negative_prompt. Higher guidance scale encourages images closely linked to the text prompt, "
+            "usually at the expense of lower image quality."
+        ),
+    )
+    parser.add_argument(
+        "--guidance_scale",
+        type=float,
+        default=1.0,
+        help=(
+            "Guidance scale for guidance-distilled models (default: 1.0, disabled). "
+            "Unlike classifier-free guidance (--cfg_scale), guidance-distilled models take the guidance scale "
+            "directly as an input parameter. Enabled when guidance_scale > 1. Ignored when not using guidance-distilled models."
+        ),
     )
     parser.add_argument(
         "--output",
@@ -145,26 +170,12 @@ def main():
             raise FileNotFoundError(f"Input image not found: {image_path}")
         img = Image.open(image_path).convert("RGB")
         input_images.append(img)
-        print(f"Loaded input image from {image_path} (size: {img.size})")
 
     # Use single image or list based on number of inputs
     if len(input_images) == 1:
         input_image = input_images[0]
-        print(f"\nUsing single image input (size: {input_image.size})")
     else:
         input_image = input_images
-        print(f"\nUsing {len(input_images)} image inputs")
-        for idx, img in enumerate(input_images):
-            print(f"  Image {idx + 1}: size {img.size}")
-
-    if len(input_images) > 1:
-        # Check if the model name suggests it's an older version
-        if "2509" not in args.model and "edit-plus" not in args.model.lower():
-            raise ValueError(
-                f"Multiple images ({len(input_images)}) are provided, but the model '{args.model}' "
-                "appears to be an older version that does not support multiple image inputs.\n"
-                "Please use Qwen/Qwen-Image-Edit-2509 or later model version"
-            )
 
     device = detect_device_type()
     generator = torch.Generator(device=device).manual_seed(args.seed)
@@ -194,32 +205,18 @@ def main():
             "scm_steps_policy": "dynamic",  # SCM steps policy: "dynamic" or "static"
         }
     elif args.cache_backend == "tea_cache":
-        raise ValueError("TeaCache is not supported for image-to-image generation.")
-
-    # Initialize Omni with QwenImageEditPipeline
-    # Choose pipeline based on number of images
-    # QwenImageEditPlusPipeline supports multiple images with proper prompt template and separate condition/VAE image processing
-    # QwenImageEditPipeline only supports single image editing (does NOT support multiple images - will fail if list is passed)
-    if isinstance(input_image, list) and len(input_image) > 1:
-        model_class_name = "QwenImageEditPlusPipeline"
-        print(f"Using QwenImageEditPlusPipeline for {len(input_image)} input images")
-    else:
-        # For single image, we can use either pipeline, but QwenImageEditPipeline is the original
-        model_class_name = "QwenImageEditPipeline"
-        print("Using QwenImageEditPipeline for single image editing")
-
-    # Safety check: Ensure QwenImageEditPipeline is never used with multiple images
-    if model_class_name == "QwenImageEditPipeline" and isinstance(input_image, list) and len(input_image) > 1:
-        raise ValueError(
-            f"QwenImageEditPipeline does not support multiple images ({len(input_image)} provided). "
-            "Please use Qwen/Qwen-Image-Edit-2509 or later model version which supports "
-            "QwenImageEditPlusPipeline for multiple image editing."
-        )
+        # TeaCache configuration
+        # All parameters marked with [tea_cache only] in DiffusionCacheConfig
+        cache_config = {
+            # TeaCache parameters [tea_cache only]
+            "rel_l1_thresh": 0.2,  # Threshold for accumulated relative L1 distance
+            # Note: coefficients will use model-specific defaults based on model_type
+            #       (e.g., QwenImagePipeline or FluxPipeline)
+        }
 
     # Initialize Omni with appropriate pipeline
     omni = Omni(
         model=args.model,
-        model_class_name=model_class_name,
         vae_use_slicing=vae_use_slicing,
         vae_use_tiling=vae_use_tiling,
         cache_backend=args.cache_backend,
@@ -236,6 +233,12 @@ def main():
     print(f"  Model: {args.model}")
     print(f"  Inference steps: {args.num_inference_steps}")
     print(f"  Cache backend: {args.cache_backend if args.cache_backend else 'None (no acceleration)'}")
+    if isinstance(input_image, list):
+        print(f"  Number of input images: {len(input_image)}")
+        for idx, img in enumerate(input_image):
+            print(f"    Image {idx + 1} size: {img.size}")
+    else:
+        print(f"  Input image size: {input_image.size}")
     print(f"  Parallel configuration: ulysses_degree={args.ulysses_degree}")
     print(f"  Input image size: {input_image.size}")
     print(f"{'=' * 60}\n")
@@ -254,6 +257,7 @@ def main():
         negative_prompt=args.negative_prompt,
         generator=generator,
         true_cfg_scale=args.cfg_scale,
+        guidance_scale=args.guidance_scale,
         num_inference_steps=args.num_inference_steps,
         num_outputs_per_prompt=args.num_outputs_per_prompt,
     )
