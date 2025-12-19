@@ -22,7 +22,9 @@ from vllm_omni.diffusion.distributed.parallel_state import (
     get_sequence_parallel_rank,
     get_sp_group,
 )
-
+from vllm_omni.utils.platform_utils import is_npu
+if is_npu:
+    from mindiesd import attention_forward
 
 class Attention(nn.Module):
     def __init__(
@@ -93,7 +95,14 @@ class Attention(nn.Module):
                 return self._forward_ulysses(query, key, value, attn_metadata)
         else:
             # shape: (batch_size, seq_len, num_heads, head_size)
-            attn_output = self.attention.forward(query, key, value, attn_metadata)
+            if is_npu:
+                attn_mask = attn_metadata.attn_mask if attn_metadata else None
+                attn_output = attention_forward(
+                    query, key, value, attn_mask=attn_mask,
+                    opt_mode="manual", op_type="fused_attn_score", layout="BSND"
+                )
+            else:
+                attn_output = self.attention.forward(query, key, value, attn_metadata)
             return attn_output
 
     def _forward_ulysses(
@@ -114,12 +123,19 @@ class Attention(nn.Module):
         if softmax_scale is None:
             softmax_scale = q.shape[-1] ** -0.5
 
-        context_layer = self.attention.forward(
-            q,
-            k,
-            v,
-            attn_metadata=attn_metadata,
-        )
+        if is_npu:
+            attn_mask = attn_metadata.attn_mask if attn_metadata else None
+            context_layer = attention_forward(
+                q, k, v, attn_mask=attn_mask,
+                opt_mode="manual", op_type="fused_attn_score", layout="BSND"
+            )
+        else:
+            context_layer = self.attention.forward(
+                q,
+                k,
+                v,
+                attn_metadata=attn_metadata,
+            )
 
         if isinstance(context_layer, tuple):
             context_layer = context_layer[0]
@@ -164,12 +180,19 @@ class Attention(nn.Module):
         if softmax_scale is None:
             softmax_scale = joint_q.shape[-1] ** -0.5
 
-        context_layer = self.attention.forward(
-            joint_q,
-            joint_k,
-            joint_v,
-            attn_metadata=attn_metadata,
-        )
+        if is_npu:
+            attn_mask = attn_metadata.attn_mask if attn_metadata else None
+            context_layer = attention_forward(
+                joint_q, joint_k, joint_v, attn_mask=attn_mask,
+                opt_mode="manual", op_type="fused_attn_score", layout="BSND"
+            )
+        else:
+            context_layer = self.attention.forward(
+                joint_q,
+                joint_k,
+                joint_v,
+                attn_metadata=attn_metadata,
+            )
 
         if isinstance(context_layer, tuple):
             context_layer = context_layer[0]

@@ -29,7 +29,6 @@ from vllm_omni.diffusion.distributed.parallel_state import (
 from vllm_omni.utils.platform_utils import is_npu
 if is_npu:
     import torch_npu
-    from mindiesd import attention_forward
 
 logger = init_logger(__name__)
 
@@ -359,15 +358,13 @@ class QwenImageCrossAttention(nn.Module):
             joint_value = torch.cat([txt_value, img_value], dim=1)
 
             # Compute joint attention
-            if is_npu:
-                joint_hidden_states = attention_forward(joint_query, joint_key, joint_value,
-                opt_mode="manual", op_type="fused_attn_score", layout="BNSD")
-            else:
-                joint_hidden_states = self.attn(
-                    joint_query,
-                    joint_key,
-                    joint_value,
-                )
+                # joint_hidden_states = attention_forward(joint_query, joint_key, joint_value,
+                # opt_mode="manual", op_type="fused_attn_score", layout="BNSD")
+            joint_hidden_states = self.attn(
+                joint_query,
+                joint_key,
+                joint_value,
+            )
             joint_hidden_states = joint_hidden_states.flatten(2, 3)
             joint_hidden_states = joint_hidden_states.to(joint_query.dtype)
 
