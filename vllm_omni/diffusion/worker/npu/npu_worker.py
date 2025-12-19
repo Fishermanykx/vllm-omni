@@ -97,7 +97,7 @@ class NPUWorker:
                 with DeviceMemoryProfiler() as m:
                     self.pipeline = model_loader.load_model(
                         od_config=self.od_config,
-                        load_device=f"cuda:{rank}",
+                        load_device=f"npu:{rank}",
                     )
                 time_after_load = time.perf_counter()
 
