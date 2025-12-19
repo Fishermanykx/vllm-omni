@@ -20,7 +20,7 @@ from vllm.model_executor.layers.linear import QKVParallelLinear, ReplicatedLinea
 from vllm.model_executor.model_loader.weight_utils import default_weight_loader
 
 from vllm_omni.diffusion.attention.layer import Attention
-from vllm_omni.diffusion.data import OmniDiffusionConfig
+from vllm_omni.diffusion.data import OmniDiffusionConfig, get_current_omni_diffusion_config
 from vllm_omni.diffusion.distributed.parallel_state import (
     get_sequence_parallel_rank,
     get_sequence_parallel_world_size,
@@ -305,6 +305,12 @@ class QwenImageCrossAttention(nn.Module):
             causal=False,
         )
 
+        config = get_current_omni_diffusion_config()
+        if config.parallel_config.ulysses_degree > 1:
+            self.use_ulysses = True
+        else:
+            self.use_ulysses = False
+
     def forward(
         self,
         hidden_states: torch.Tensor,
@@ -345,28 +351,44 @@ class QwenImageCrossAttention(nn.Module):
             txt_query = apply_rotary_emb_qwen(txt_query, txt_freqs, use_real=False)
             txt_key = apply_rotary_emb_qwen(txt_key, txt_freqs, use_real=False)
 
-        # Concatenate for joint attention
-        # Order: [text, image]
-        joint_query = torch.cat([txt_query, img_query], dim=1)
-        joint_key = torch.cat([txt_key, img_key], dim=1)
-        joint_value = torch.cat([txt_value, img_value], dim=1)
+        if not self.use_ulysses:
+            # Concatenate for joint attention
+            # Order: [text, image]
+            joint_query = torch.cat([txt_query, img_query], dim=1)
+            joint_key = torch.cat([txt_key, img_key], dim=1)
+            joint_value = torch.cat([txt_value, img_value], dim=1)
 
-        # Compute joint attention
-        if is_npu:
-            joint_hidden_states = attention_forward(joint_query, joint_key, joint_value,
-            opt_mode="manual", op_type="fused_attn_score", layout="BNSD")
+            # Compute joint attention
+            if is_npu:
+                joint_hidden_states = attention_forward(joint_query, joint_key, joint_value,
+                opt_mode="manual", op_type="fused_attn_score", layout="BNSD")
+            else:
+                joint_hidden_states = self.attn(
+                    joint_query,
+                    joint_key,
+                    joint_value,
+                )
+            joint_hidden_states = joint_hidden_states.flatten(2, 3)
+            joint_hidden_states = joint_hidden_states.to(joint_query.dtype)
+
+            # Split attention outputs back
+            txt_attn_output = joint_hidden_states[:, :seq_len_txt, :]  # Text part
+            img_attn_output = joint_hidden_states[:, seq_len_txt:, :]  # Image part
         else:
-            joint_hidden_states = self.attn(
-                joint_query,
-                joint_key,
-                joint_value,
+            img_attn_output, txt_attn_output = self.attn(
+                img_query,
+                img_key,
+                img_value,
+                txt_query,
+                txt_key,
+                txt_value,
+                separate=True
             )
-        joint_hidden_states = joint_hidden_states.flatten(2, 3)
-        joint_hidden_states = joint_hidden_states.to(joint_query.dtype)
 
-        # Split attention outputs back
-        txt_attn_output = joint_hidden_states[:, :seq_len_txt, :]  # Text part
-        img_attn_output = joint_hidden_states[:, seq_len_txt:, :]  # Image part
+            img_attn_output = img_attn_output.flatten(2, 3)
+            img_attn_output = img_attn_output.to(img_query.dtype)
+            txt_attn_output = txt_attn_output.flatten(2, 3)
+            txt_attn_output = txt_attn_output.to(txt_query.dtype)
 
         # Apply output projections
         img_attn_output, _ = self.to_out[0](img_attn_output)
