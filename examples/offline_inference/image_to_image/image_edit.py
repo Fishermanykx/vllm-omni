@@ -139,7 +139,12 @@ def parse_args() -> argparse.Namespace:
         default=1,
         help="Number of GPUs used for ulysses sequence parallelism.",
     )
-
+    parser.add_argument(
+        "--dp_size",
+        type=int,
+        default=1,
+        help="Number of GPUs used for data sequence parallelism.",
+    )
     parser.add_argument(
         "--quantization",
         type=str,
@@ -184,7 +189,7 @@ def main():
     vae_use_slicing = is_npu()
     vae_use_tiling = is_npu()
 
-    parallel_config = DiffusionParallelConfig(ulysses_degree=args.ulysses_degree)
+    parallel_config = DiffusionParallelConfig(data_parallel_size=args.dp_size, ulysses_degree=args.ulysses_degree)
     # Configure cache based on backend type
     cache_config = None
     if args.cache_backend == "cache_dit":

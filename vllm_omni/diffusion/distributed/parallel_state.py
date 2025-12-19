@@ -508,6 +508,27 @@ def init_vae_group(
     _VAE = torch.distributed.new_group(ranks=vae_ranks, backend=backend)
 
 
+def set_data_parallel_pg(data_parallel_size, rank, world_size):
+    dp_size = data_parallel_size
+
+    assert world_size % dp_size == 0, f"world_size {world_size} % dp_size {data_parallel_size} != 0"
+
+    dp_group_num = world_size // dp_size
+    for dp_group_rank in range(dp_group_num):
+        dp_ranks = list(
+            range(
+                dp_group_rank,
+                world_size,
+                dp_group_num
+            )
+        )
+        group = torch.distributed.new_group(dp_ranks)
+        if rank in dp_ranks:
+            dp_pg = group
+    
+    return dp_pg
+
+
 # adapted from https://github.com/feifeibear/long-context-attention/blob/main/yunchang/globals.py
 def set_seq_parallel_pg(sp_ulysses_degree, sp_ring_degree, rank, world_size, use_ulysses_low=True):
     """
@@ -660,11 +681,17 @@ def initialize_model_parallel(
     )
     global _DP
     assert _DP is None, "data parallel group is already initialized"
+    dp_pg = set_data_parallel_pg(
+        data_parallel_size=data_parallel_size,
+        rank=get_world_group().rank_in_group,
+        world_size=dit_parallel_size,
+    )
     _DP = init_model_parallel_group(
         group_ranks=rank_generator.get_ranks("dp"),
         local_rank=get_world_group().local_rank,
         backend=backend,
         parallel_mode="data",
+        data_group=dp_pg
     )
 
     global _CFG

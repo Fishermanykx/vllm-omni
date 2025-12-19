@@ -940,3 +940,28 @@ class SequenceParallelGroupCoordinator(GroupCoordinator):
         self.ulysses_rank = torch.distributed.get_rank(self.ulysses_group)
         self.ring_world_size = torch.distributed.get_world_size(self.ring_group)
         self.ring_rank = torch.distributed.get_rank(self.ring_group)
+
+
+class DataParallelGroupCoordinator(GroupCoordinator):
+    def __init__(
+        self,
+        group_ranks: list[list[int]],
+        local_rank: int,
+        torch_distributed_backend: str | Backend,
+        **kwargs,
+    ):
+        super().__init__(
+            group_ranks=group_ranks,
+            local_rank=local_rank,
+            torch_distributed_backend=torch_distributed_backend,
+        )
+
+        data_group = kwargs.get("data_group", None)
+        if data_group is None:
+            raise RuntimeError(
+                "Please pass argument 'data_group' when calling init func of DataParallelGroupCoordinator"
+            )
+        self.data_group = data_group
+
+        self.world_size = torch.distributed.get_world_size(self.data_group)
+        self.rank_in_group = torch.distributed.get_rank(self.data_group)
