@@ -21,6 +21,12 @@ from vllm_omni.diffusion.data import (
     SHUTDOWN_MESSAGE,
     DiffusionOutput,
     OmniDiffusionConfig,
+    set_current_omni_diffusion_config,
+)
+from vllm_omni.diffusion.distributed.parallel_state import (
+    destroy_distributed_env,
+    init_distributed_environment,
+    initialize_model_parallel,
 )
 from vllm_omni.diffusion.model_loader.diffusers_loader import DiffusersPipelineLoader
 from vllm_omni.diffusion.request import OmniDiffusionRequest
@@ -67,20 +73,33 @@ class NPUWorker:
                 return "fake"
 
         vllm_config = VllmConfig(model_config=ModelConfig(hf_config=_FakePretrainedConfig()), load_config=LoadConfig())
-        vllm_config.parallel_config.tensor_parallel_size = self.od_config.num_gpus
-        set_current_vllm_config(vllm_config)
+        vllm_config.parallel_config.tensor_parallel_size = self.od_config.parallel_config.tensor_parallel_size
+        vllm_config.parallel_config.data_parallel_size = self.od_config.parallel_config.data_parallel_size
 
-        init_distributed_environment(world_size=world_size, rank=rank)
-        initialize_model_parallel(tensor_model_parallel_size=world_size)
+        with set_current_omni_diffusion_config(self.od_config):
+            with set_current_vllm_config(vllm_config):
+                init_distributed_environment(world_size=world_size, rank=rank)
+                logger.info(f"Worker {self.rank}: Initialized device and distributed environment.")
+                parallel_config = self.od_config.parallel_config
+                initialize_model_parallel(
+                    data_parallel_size=parallel_config.data_parallel_size,
+                    cfg_parallel_size=parallel_config.cfg_parallel_size,
+                    sequence_parallel_size=parallel_config.sequence_parallel_size,
+                    ulysses_degree=parallel_config.ulysses_degree,
+                    ring_degree=parallel_config.ring_degree,
+                    tensor_parallel_size=parallel_config.tensor_parallel_size,
+                    pipeline_parallel_size=parallel_config.pipeline_parallel_size,
+                )
 
-        model_loader = DiffusersPipelineLoader(vllm_config.load_config)
-        time_before_load = time.perf_counter()
-        with DeviceMemoryProfiler() as m:
-            self.pipeline = model_loader.load_model(
-                od_config=self.od_config,
-                load_device=f"npu:{rank}",
-            )
-        time_after_load = time.perf_counter()
+                load_config = LoadConfig()
+                model_loader = DiffusersPipelineLoader(load_config)
+                time_before_load = time.perf_counter()
+                with DeviceMemoryProfiler() as m:
+                    self.pipeline = model_loader.load_model(
+                        od_config=self.od_config,
+                        load_device=f"npu:{rank}",
+                    )
+                time_after_load = time.perf_counter()
 
         logger.info(
             "Model loading took %.4f GiB and %.6f seconds",
@@ -112,12 +131,7 @@ class NPUWorker:
         return output
 
     def shutdown(self) -> None:
-        if torch.distributed.is_initialized():
-            try:
-                torch.distributed.destroy_process_group()
-                logger.info("Worker %s: Destroyed process group", self.rank)
-            except Exception as exc:  # pragma: no cover - best effort cleanup
-                logger.warning("Worker %s: Failed to destroy process group: %s", self.rank, exc)
+        destroy_distributed_env()
 
 
 class NPUWorkerProc:
