@@ -15,7 +15,7 @@ class CustomOp(nn.Module):
     def __init__(self) -> None:
         super().__init__()
         self.is_cuda = detect_device_type() == "cuda"
-        self.is_npu = detect_device_type == "npu"
+        self.is_npu = detect_device_type() == "npu"
         self._forward_method = self.dispatch_forward()
 
     def dispatch_forward(self) -> Callable:

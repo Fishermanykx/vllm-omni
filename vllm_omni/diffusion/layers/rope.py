@@ -109,11 +109,14 @@ class RotaryEmbedding(CustomOp):
             # (B, S, D/2) -> (S, D/2)
             cos = cos[0]
             sin = sin[0]
+        seqlen = cos.shape[0]
+        cos = cos.unsqueeze(0).unsqueeze(2).unsqueeze(-1).expand(-1, -1, -1, -1, 2).reshape(1, seqlen, 1, -1)
+        sin = sin.unsqueeze(0).unsqueeze(2).unsqueeze(-1).expand(-1, -1, -1, -1, 2).reshape(1, seqlen, 1, -1)
 
         if self.interleaved:
-            return rotary_position_embedding(x, cos, sin, rotated_mode="rotated_interleaved", fused=True)
+            return rotary_position_embedding(x, cos, sin, rotated_mode="rotated_interleaved", head_first=False, fused=True)
         else:
-            return rotary_position_embedding(x, cos, sin, rotated_mode="rotated_half", fused=True)
+            return rotary_position_embedding(x, cos, sin, rotated_mode="rotated_half", head_first=False, fused=True)
 
     def forward_native(
         self,
