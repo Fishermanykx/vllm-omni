@@ -96,6 +96,24 @@ class RotaryEmbedding(CustomOp):
             sin,
             interleaved=self.interleaved,
         )
+    
+    def forward_npu(
+        self,
+        x: torch.Tensor,
+        cos: torch.Tensor,
+        sin: torch.Tensor,
+    ) -> torch.Tensor:
+        from mindiesd import rotary_position_embedding
+
+        if cos.dim() == 3:
+            # (B, S, D/2) -> (S, D/2)
+            cos = cos[0]
+            sin = sin[0]
+
+        if self.interleaved:
+            return rotary_position_embedding(x, cos, sin, rotated_mode="rotated_interleaved", fused=True)
+        else:
+            return rotary_position_embedding(x, cos, sin, rotated_mode="rotated_half", fused=True)
 
     def forward_native(
         self,
