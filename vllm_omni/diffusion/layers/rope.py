@@ -102,6 +102,7 @@ class RotaryEmbedding(CustomOp):
         x: torch.Tensor,
         cos: torch.Tensor,
         sin: torch.Tensor,
+        half_head_dim: torch.Tensor = True, # if true, size of sin and cos is (B, S, D/2), otherwise (B, S, D)
     ) -> torch.Tensor:
         from mindiesd import rotary_position_embedding
 
@@ -109,13 +110,17 @@ class RotaryEmbedding(CustomOp):
             # (B, S, D/2) -> (S, D/2)
             cos = cos[0]
             sin = sin[0]
-        seqlen = cos.shape[0]
-        cos = cos.unsqueeze(0).unsqueeze(2).unsqueeze(-1).expand(-1, -1, -1, -1, 2).reshape(1, seqlen, 1, -1)
-        sin = sin.unsqueeze(0).unsqueeze(2).unsqueeze(-1).expand(-1, -1, -1, -1, 2).reshape(1, seqlen, 1, -1)
 
         if self.interleaved:
+            # if last dim of sin and cos is D/2, expand to (S, D) to adapt to mindiesd operators
+            if half_head_dim:
+                sin = repeat(sin, "... d -> ... 1 (d 2)")
+                cos = repeat(cos, "... d -> ... 1 (d 2)")
             return rotary_position_embedding(x, cos, sin, rotated_mode="rotated_interleaved", head_first=False, fused=True)
         else:
+            if half_head_dim:
+                sin = repeat(sin, "... d -> ... 1 (2 d)")
+                cos = repeat(cos, "... d -> ... 1 (2 d)")
             return rotary_position_embedding(x, cos, sin, rotated_mode="rotated_half", head_first=False, fused=True)
 
     def forward_native(
