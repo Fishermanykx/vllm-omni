@@ -4,22 +4,18 @@ from typing import Any
 import torch.nn as nn
 from vllm.logger import init_logger
 
-from vllm_omni.diffusion.attention.backends.abstract import (
-    AttentionBackend,
-    AttentionImpl,
-    AttentionMetadata,
-)
 from vllm_omni.utils.platform_utils import detect_device_type, is_rocm
 
 logger = init_logger(__name__)
 
-class CustomAttn(AttentionImpl):
+class CustomAttn(nn.Module):
     """
     Base class for custom attention forward.
     Dispatches the forward method to the appropriate backend.
     """
 
     def __init__(self) -> None:
+        super().__init__()
         self.is_cuda = detect_device_type() == "cuda"
         self.is_npu = detect_device_type() == "npu"
         self._forward_method = self.dispatch_forward()

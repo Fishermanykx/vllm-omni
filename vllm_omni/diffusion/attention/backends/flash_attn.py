@@ -9,7 +9,6 @@ from vllm_omni.diffusion.attention.backends.abstract import (
     AttentionImpl,
     AttentionMetadata,
 )
-from vllm_omni.diffusion.attention.backends.custom_attn import CustomAttn
 
 logger = init_logger(__name__)
 
@@ -42,7 +41,7 @@ class FlashAttentionBackend(AttentionBackend):
         return FlashAttentionImpl
 
 
-class FlashAttentionImpl(CustomAttn):
+class FlashAttentionImpl(AttentionImpl):
     def __init__(
         self,
         num_heads: int,
@@ -53,39 +52,11 @@ class FlashAttentionImpl(CustomAttn):
         prefix: str = "",
         **extra_impl_args,
     ) -> None:
-        super().__init__()
         self.num_heads = num_heads
         self.causal = causal
         self.softmax_scale = softmax_scale
 
-    def forward_hip(
-        self,
-        query: torch.Tensor,
-        key: torch.Tensor,
-        value: torch.Tensor,
-        attn_metadata: AttentionMetadata = None,
-    ) -> torch.Tensor:
-        return self.forward_cuda(query, key, value, attn_metadata)
-
-    def forward_cuda(
-        self,
-        query: torch.Tensor,
-        key: torch.Tensor,
-        value: torch.Tensor,
-        attn_metadata: AttentionMetadata = None,
-    ) -> torch.Tensor:
-        return self.forward_native(query, key, value, attn_metadata)
-
-    def forward_npu(
-        self,
-        query: torch.Tensor,
-        key: torch.Tensor,
-        value: torch.Tensor,
-        attn_metadata: AttentionMetadata = None,
-    ) -> torch.Tensor:
-        return self.forward_native(query, key, value, attn_metadata)
-
-    def forward_native(
+    def forward(
         self,
         query: torch.Tensor,
         key: torch.Tensor,

@@ -1,9 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 
-from collections.abc import Callable
-from typing import Any
-
 import torch
 from vllm.logger import init_logger
 
@@ -33,7 +30,7 @@ class SDPABackend(AttentionBackend):
         return SDPAImpl
 
 
-class SDPAImpl(CustomAttn):
+class SDPAImpl(CustomAttn, AttentionImpl):
     def __init__(
         self,
         num_heads: int,
