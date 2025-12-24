@@ -12,7 +12,7 @@ from vllm_omni.diffusion.attention.backends.abstract import (
     AttentionImpl,
     AttentionMetadata,
 )
-from vllm_omni.utils.platform_utils import detect_device_type, is_rocm
+from vllm_omni.diffusion.attention.backends.custom_attn import CustomAttn
 
 logger = init_logger(__name__)
 
@@ -33,7 +33,7 @@ class SDPABackend(AttentionBackend):
         return SDPAImpl
 
 
-class SDPAImpl(AttentionImpl):
+class SDPAImpl(CustomAttn):
     def __init__(
         self,
         num_heads: int,
@@ -46,22 +46,6 @@ class SDPAImpl(AttentionImpl):
     ) -> None:
         self.causal = causal
         self.softmax_scale = softmax_scale
-        self.is_cuda = detect_device_type() == "cuda"
-        self.is_npu = detect_device_type == "npu"
-        self._forward_method = self.dispatch_forward()
-
-    def dispatch_forward(self) -> Callable:
-        if is_rocm():
-            return self.forward_hip
-        elif self.is_cuda:
-            return self.forward_cuda
-        elif self.is_npu:
-            return self.forward_npu
-        else:
-            return self.forward_native
-
-    def forward(self, *args, **kwargs) -> Any:
-        return self._forward_method(*args, **kwargs)
 
     def forward_hip(
         self,
@@ -79,20 +63,7 @@ class SDPAImpl(AttentionImpl):
         value: torch.Tensor,
         attn_metadata: AttentionMetadata = None,
     ) -> torch.Tensor:
-        query, key, value = (x.permute(0, 2, 1, 3) for x in (query, key, value))
-        attention_mask = attn_metadata.attn_mask if attn_metadata else None
-
-        output = torch.nn.functional.scaled_dot_product_attention(
-            query,
-            key,
-            value,
-            attn_mask=attention_mask,
-            dropout_p=0.0,
-            is_causal=self.causal,
-            scale=self.softmax_scale,
-        )
-        out = output.permute(0, 2, 1, 3)
-        return out
+        return self.forward_native(query, key, value, attn_metadata)
 
     def forward_npu(
         self,
@@ -119,4 +90,17 @@ class SDPAImpl(AttentionImpl):
         value: torch.Tensor,
         attn_metadata: AttentionMetadata = None,
     ) -> torch.Tensor:
-        return self.forward_cuda(query, key, value, attn_metadata)
+        query, key, value = (x.permute(0, 2, 1, 3) for x in (query, key, value))
+        attention_mask = attn_metadata.attn_mask if attn_metadata else None
+
+        output = torch.nn.functional.scaled_dot_product_attention(
+            query,
+            key,
+            value,
+            attn_mask=attention_mask,
+            dropout_p=0.0,
+            is_causal=self.causal,
+            scale=self.softmax_scale,
+        )
+        out = output.permute(0, 2, 1, 3)
+        return out
