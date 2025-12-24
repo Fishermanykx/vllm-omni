@@ -53,6 +53,7 @@ class FlashAttentionImpl(CustomAttn):
         prefix: str = "",
         **extra_impl_args,
     ) -> None:
+        super().__init__()
         self.num_heads = num_heads
         self.causal = causal
         self.softmax_scale = softmax_scale

@@ -19,8 +19,16 @@ class CustomAttn(AttentionImpl):
     Dispatches the forward method to the appropriate backend.
     """
 
-    def __init__(self) -> None:
-        super().__init__()
+    def __init__(
+        self,
+        num_heads: int,
+        head_size: int,
+        softmax_scale: float,
+        causal: bool = False,
+        num_kv_heads: int | None = None,
+        prefix: str = "",
+        **extra_impl_args,
+    ) -> None:
         self.is_cuda = detect_device_type() == "cuda"
         self.is_npu = detect_device_type() == "npu"
         self._forward_method = self.dispatch_forward()

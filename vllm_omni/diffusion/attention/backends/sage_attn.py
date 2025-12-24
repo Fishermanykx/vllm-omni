@@ -52,6 +52,7 @@ class SageAttentionImpl(CustomAttn):
         prefix: str = "",
         **extra_impl_args,
     ) -> None:
+        super().__init__()
         self.causal = causal
         self.softmax_scale = softmax_scale
 

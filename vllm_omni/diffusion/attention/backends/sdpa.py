@@ -44,6 +44,7 @@ class SDPAImpl(CustomAttn):
         prefix: str = "",
         **extra_impl_args,
     ) -> None:
+        super().__init__(num_heads, head_size, softmax_scale, causal, num_kv_heads, prefix, **extra_impl_args)
         self.causal = causal
         self.softmax_scale = softmax_scale
 
