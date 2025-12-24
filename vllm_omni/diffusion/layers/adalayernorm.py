@@ -26,6 +26,7 @@ class AdaLayerNorm(CustomOp):
         self.eps = eps
         self.elementwise_affine = elementwise_affine
         self.hidden_size = hidden_size
+        self.layernorm = nn.LayerNorm(self.hidden_size, elementwise_affine=self.elementwise_affine, eps=self.eps)
 
     def forward_cuda(
         self,
@@ -69,4 +70,4 @@ class AdaLayerNorm(CustomOp):
         scale_result = scale.unsqueeze(1)
         gate_result = gate.unsqueeze(1)
 
-        return nn.LayerNorm(self.hidden_size, elementwise_affine=self.elementwise_affine, eps=self.eps)(x) * (1 + scale_result) + shift_result, gate_result
+        return self.layernorm(x) * (1 + scale_result) + shift_result, gate_result
