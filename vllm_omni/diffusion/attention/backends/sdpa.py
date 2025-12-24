@@ -44,7 +44,7 @@ class SDPAImpl(CustomAttn):
         prefix: str = "",
         **extra_impl_args,
     ) -> None:
-        super().__init__(num_heads, head_size, softmax_scale, causal, num_kv_heads, prefix, **extra_impl_args)
+        super().__init__()
         self.causal = causal
         self.softmax_scale = softmax_scale
 
@@ -74,15 +74,14 @@ class SDPAImpl(CustomAttn):
         attn_metadata: AttentionMetadata = None,
     ) -> torch.Tensor:
         from mindiesd import attention_forward
-        query, key, value = (x.permute(0, 2, 1, 3) for x in (query, key, value))
         attention_mask = attn_metadata.attn_mask if attn_metadata else None
 
         output = attention_forward(
-            query, key, value, attn_mask=attention_mask, is_causal=False
+            query, key, value, attn_mask=attention_mask,
+            opt_mode="manual", op_type="fused_attn_score", layout="BNSD"
         )
 
-        out = output.permute(0, 2, 1, 3)
-        return out
+        return output
 
     def forward_native(
         self,
