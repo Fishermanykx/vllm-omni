@@ -42,6 +42,9 @@ class CustomOp(nn.Module):
     def forward_cuda(self, *args, **kwargs):
         raise NotImplementedError
 
+    def forward_npu(self, *args, **kwargs):
+        raise NotImplementedError
+
     def forward_hip(self, *args, **kwargs):
         # By default, we assume that HIP ops are compatible with CUDA ops.
         return self.forward_cuda(*args, **kwargs)
