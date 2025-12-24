@@ -33,11 +33,7 @@ class AdaLayerNorm(CustomOp):
         x: torch.Tensor,
         mod_params: torch.Tensor
     ) -> torch.Tensor:
-        shift, scale, gate = mod_params.chunk(3, dim=-1)
-        scale = (1 + scale.unsqueeze(1))
-        shift = shift.unsqueeze(1)
-        return torch.nn.functional.layer_norm(
-                x, normalized_shape=[self.hidden_size], weight=scale, bias=shift, eps=self.eps), gate.unsqueeze(1)
+        return self.forward_native(x, mod_params)
 
     def forward_hip(
         self,
