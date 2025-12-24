@@ -114,13 +114,15 @@ class RotaryEmbedding(CustomOp):
         if self.interleaved:
             # if last dim of sin and cos is D/2, expand to (S, D) to adapt to mindiesd operators
             if half_head_dim:
-                sin = repeat(sin, "... d -> ... 1 (d 2)")
-                cos = repeat(cos, "... d -> ... 1 (d 2)")
+                seqlen = cos.shape[0]
+                sin = sin.unsqueeze(0).unsqueeze(2).unsqueeze(-1).expand(-1, -1, -1, -1, 2).reshape(1, seqlen, 1, -1)
+                cos = cos.unsqueeze(0).unsqueeze(2).unsqueeze(-1).expand(-1, -1, -1, -1, 2).reshape(1, seqlen, 1, -1)
             return rotary_position_embedding(x, cos, sin, rotated_mode="rotated_interleaved", head_first=False, fused=True)
         else:
             if half_head_dim:
-                sin = repeat(sin, "... d -> ... 1 (2 d)")
-                cos = repeat(cos, "... d -> ... 1 (2 d)")
+                seqlen = cos.shape[0]
+                sin = sin.unsqueeze(0).unsqueeze(2).repeat(1, 1, 1, 2)
+                cos = cos.unsqueeze(0).unsqueeze(2).repeat(1, 1, 1, 2)
             return rotary_position_embedding(x, cos, sin, rotated_mode="rotated_half", head_first=False, fused=True)
 
     def forward_native(
