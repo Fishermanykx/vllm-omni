@@ -15,7 +15,7 @@ logger = init_logger(__name__)
 
 class CustomAttn(AttentionImpl):
     """
-    Base class for custom ops.
+    Base class for custom attention forward.
     Dispatches the forward method to the appropriate backend.
     """
 
