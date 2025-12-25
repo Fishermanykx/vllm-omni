@@ -63,6 +63,7 @@ class AscendAttentionBackendImpl(AttentionImpl):
             scale=self.softmax_scale,
         )
         out = output.permute(0, 2, 1, 3)
+        return out
 
     def forward(
         self,
@@ -73,12 +74,13 @@ class AscendAttentionBackendImpl(AttentionImpl):
     ) -> torch.Tensor:
         try:
             from mindiesd import attention_forward
-            attention_mask = attn_metadata.attn_mask if attn_metadata else None
-
-            output = attention_forward(
-                query, key, value, attn_mask=attention_mask, opt_mode="manual", op_type="fused_attn_score", layout="BNSD"
-            )
         except:
-            self.forward_native(query, key, value, attn_metadata)
+            return self.forward_native(query, key, value, attn_metadata)
+        
+        attention_mask = attn_metadata.attn_mask if attn_metadata else None
+
+        output = attention_forward(
+            query, key, value, attn_mask=attention_mask, opt_mode="manual", op_type="fused_attn_score", layout="BNSD"
+        )
 
         return output
