@@ -30,10 +30,10 @@ class AdaLayerNorm(CustomOp):
 
     def preprocess(
         self,
-        mod_params,
-        index=None):
-        """Apply modulation to input tensor"""
-        # x: b l d, shift: b d, scale: b d, gate: b d
+        mod_params: torch.Tensor,
+        index: torch.Tensor = None,
+    ) -> torch.Tensor:
+        # shift: b d, scale: b d, gate: b d
         shift, scale, gate = mod_params.chunk(3, dim=-1)
 
         if index is not None:
