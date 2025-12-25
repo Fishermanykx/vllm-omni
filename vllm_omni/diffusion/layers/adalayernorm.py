@@ -89,11 +89,15 @@ class AdaLayerNorm(CustomOp):
         mod_params: torch.Tensor,
         index: torch.Tensor = None,
     ) -> torch.Tensor:
-        import torch_npu
         shift_result, scale_result, gate_result = self.preprocess(mod_params, index)
-
-        return torch_npu.npu_layer_norm_eval(
-                x, normalized_shape=[self.hidden_size], weight=(1 + scale_result), bias=shift_result, eps=self.eps), gate_result
+        try:
+            from mindiesd import layernorm_scale_shift
+            return layernorm_scale_shift(
+                    self.layernorm, x, scale=scale_result, shift=shift_result, fused=True), gate_result
+        except:
+            import torch_npu
+            return torch_npu.npu_layer_norm_eval(
+                    x, normalized_shape=[self.hidden_size], weight=(1 + scale_result), bias=shift_result, eps=self.eps), gate_result
 
     def forward_native(
         self,
