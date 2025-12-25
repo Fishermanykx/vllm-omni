@@ -13,7 +13,7 @@ from vllm_omni.diffusion.attention.backends.abstract import (
 logger = init_logger(__name__)
 
 
-class SDPABackend(AttentionBackend):
+class AscendAttentionBackend(AttentionBackend):
     accept_output_buffer: bool = True
 
     @staticmethod
@@ -22,14 +22,14 @@ class SDPABackend(AttentionBackend):
 
     @staticmethod
     def get_name() -> str:
-        return "SDPA"
+        return "ASCEND"
 
     @staticmethod
-    def get_impl_cls() -> type["SDPAImpl"]:
-        return SDPAImpl
+    def get_impl_cls() -> type["AscendAttentionBackendImpl"]:
+        return AscendAttentionBackendImpl
 
 
-class SDPAImpl(AttentionImpl):
+class AscendAttentionBackendImpl(AttentionImpl):
     def __init__(
         self,
         num_heads: int,
@@ -43,7 +43,7 @@ class SDPAImpl(AttentionImpl):
         self.causal = causal
         self.softmax_scale = softmax_scale
 
-    def forward(
+    def forward_native(
         self,
         query: torch.Tensor,
         key: torch.Tensor,
@@ -63,4 +63,22 @@ class SDPAImpl(AttentionImpl):
             scale=self.softmax_scale,
         )
         out = output.permute(0, 2, 1, 3)
-        return out
+
+    def forward(
+        self,
+        query: torch.Tensor,
+        key: torch.Tensor,
+        value: torch.Tensor,
+        attn_metadata: AttentionMetadata = None,
+    ) -> torch.Tensor:
+        try:
+            from mindiesd import attention_forward
+            attention_mask = attn_metadata.attn_mask if attn_metadata else None
+
+            output = attention_forward(
+                query, key, value, attn_mask=attention_mask, opt_mode="manual", op_type="fused_attn_score", layout="BNSD"
+            )
+        except:
+            self.forward_native(query, key, value, attn_metadata)
+
+        return output
