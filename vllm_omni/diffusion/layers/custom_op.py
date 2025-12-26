@@ -1,9 +1,10 @@
 from collections.abc import Callable
 from typing import Any
+import os
 
 import torch.nn as nn
 
-from vllm_omni.utils.platform_utils import detect_device_type, is_rocm
+from vllm_omni.utils.platform_utils import detect_device_type, is_rocm, is_npu
 
 
 class CustomOp(nn.Module):
@@ -22,6 +23,16 @@ class CustomOp(nn.Module):
             return self.forward_hip
         elif self.is_cuda:
             return self.forward_cuda
+        elif is_npu():
+            enable_mindiesd: bool = os.environ.get("ENABLE_MINDIE_SD", "").lower() in ("true", "1")
+            if enable_mindiesd:
+                try:
+                    import mindiesd
+                    return self.forward_mindiesd
+                except ImportError:
+                    return self.forward_npu
+            else:
+                return self.forward_npu
         else:
             return self.forward_native
 
@@ -38,6 +49,12 @@ class CustomOp(nn.Module):
 
     def forward_cuda(self, *args, **kwargs):
         raise NotImplementedError
+
+    def forward_npu(self, *args, **kwargs):
+        raise NotImplementedError
+    
+    def forward_mindiesd(self, *args, **kwargs):
+        return self.forward_npu(*args, **kwargs)
 
     def forward_hip(self, *args, **kwargs):
         # By default, we assume that HIP ops are compatible with CUDA ops.

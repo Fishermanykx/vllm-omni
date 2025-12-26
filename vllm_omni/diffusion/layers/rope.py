@@ -96,6 +96,42 @@ class RotaryEmbedding(CustomOp):
             sin,
             interleaved=self.interleaved,
         )
+    
+    def forward_mindiesd(
+        self,
+        x: torch.Tensor,
+        cos: torch.Tensor,
+        sin: torch.Tensor,
+        half_head_dim: bool = True, # if true, size of sin and cos is (B, S, D/2), otherwise (B, S, D)
+    ) -> torch.Tensor:
+        from mindiesd import rotary_position_embedding
+
+        if cos.dim() == 3:
+            # (B, S, D/2) -> (S, D/2)
+            cos = cos[0]
+            sin = sin[0]
+
+        if self.interleaved:
+            # if last dim of sin and cos is D/2, expand to (S, D) to adapt to mindiesd operators
+            if half_head_dim:
+                seqlen = cos.shape[0]
+                sin = sin.unsqueeze(0).unsqueeze(2).unsqueeze(-1).expand(-1, -1, -1, -1, 2).reshape(1, seqlen, 1, -1)
+                cos = cos.unsqueeze(0).unsqueeze(2).unsqueeze(-1).expand(-1, -1, -1, -1, 2).reshape(1, seqlen, 1, -1)
+            return rotary_position_embedding(x, cos, sin, rotated_mode="rotated_interleaved", head_first=False, fused=True)
+        else:
+            if half_head_dim:
+                seqlen = cos.shape[0]
+                sin = sin.unsqueeze(0).unsqueeze(2).repeat(1, 1, 1, 2)
+                cos = cos.unsqueeze(0).unsqueeze(2).repeat(1, 1, 1, 2)
+            return rotary_position_embedding(x, cos, sin, rotated_mode="rotated_half", head_first=False, fused=True)
+
+    def forward_npu(
+        self,
+        x: torch.Tensor,
+        cos: torch.Tensor,
+        sin: torch.Tensor,
+    ) -> torch.Tensor:
+        return self.forward_native(x, cos, sin)
 
     def forward_native(
         self,
