@@ -100,10 +100,6 @@ class RotaryEmbedding(CustomOp):
 
             self.apply_rotary_emb_flash_attn = apply_rotary
 
-        self.enable_mindiesd = os.environ.get("ENABLE_MINDIE_SD", "").lower() in ("true", "1")
-        if self.enable_mindiesd and not find_spec("mindiesd"):
-            self.enable_mindiesd = False
-
     def forward_cuda(
         self,
         x: torch.Tensor,
@@ -151,7 +147,7 @@ class RotaryEmbedding(CustomOp):
         cos: torch.Tensor,
         sin: torch.Tensor,
     ) -> torch.Tensor:
-        if self.enable_mindiesd:
+        if os.environ.get("ENABLE_MINDIE_SD", "").lower() in ("true", "1") and find_spec("mindiesd"):
             return apply_rotary_emb_mindiesd(x, cos, sin, self.interleaved)
         else:
             return self.forward_native(x, cos, sin)

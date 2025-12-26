@@ -44,9 +44,6 @@ class AscendAttentionBackendImpl(AttentionImpl):
     ) -> None:
         self.causal = causal
         self.softmax_scale = softmax_scale
-        self.enable_mindiesd = os.environ.get("ENABLE_MINDIE_SD", "").lower() in ("true", "1")
-        if self.enable_mindiesd and not find_spec("mindiesd"):
-            self.enable_mindiesd = False
 
     def forward_native(
         self,
@@ -77,7 +74,7 @@ class AscendAttentionBackendImpl(AttentionImpl):
         value: torch.Tensor,
         attn_metadata: AttentionMetadata = None,
     ) -> torch.Tensor:
-        if self.enable_mindiesd:
+        if os.environ.get("ENABLE_MINDIE_SD", "").lower() in ("true", "1") and find_spec("mindiesd"):
             from mindiesd import attention_forward
             attention_mask = attn_metadata.attn_mask if attn_metadata else None
             output = attention_forward(
