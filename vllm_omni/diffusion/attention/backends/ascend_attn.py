@@ -79,15 +79,13 @@ class AscendAttentionBackendImpl(AttentionImpl):
         value: torch.Tensor,
         attn_metadata: AttentionMetadata = None,
     ) -> torch.Tensor:
-        try:
+        if self.mindiesd_available:
             from mindiesd import attention_forward
-        except ImportError:
+            attention_mask = attn_metadata.attn_mask if attn_metadata else None
+            output = attention_forward(
+                query, key, value, attn_mask=attention_mask, opt_mode="manual", op_type="fused_attn_score", layout="BNSD"
+            )
+        else:
             return self.forward_native(query, key, value, attn_metadata)
-
-        attention_mask = attn_metadata.attn_mask if attn_metadata else None
-
-        output = attention_forward(
-            query, key, value, attn_mask=attention_mask, opt_mode="manual", op_type="fused_attn_score", layout="BNSD"
-        )
 
         return output
