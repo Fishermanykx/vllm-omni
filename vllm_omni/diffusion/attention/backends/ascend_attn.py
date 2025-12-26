@@ -2,6 +2,7 @@
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 
 import os
+import importlib.util
 import torch
 from vllm.logger import init_logger
 
@@ -43,12 +44,9 @@ class AscendAttentionBackendImpl(AttentionImpl):
     ) -> None:
         self.causal = causal
         self.softmax_scale = softmax_scale
-        self.mindiesd_available = os.environ.get("ENABLE_MINDIE_SD", "").lower() in ("true", "1")
-        if self.mindiesd_available:
-            try:
-                import mindiesd
-            except ImportError:
-                self.mindiesd_available = False
+        self.enable_mindiesd = os.environ.get("ENABLE_MINDIE_SD", "").lower() in ("true", "1")
+        if self.enable_mindiesd and not importlib.util.find_spec("mindiesd"):
+            self.enable_mindiesd = False
 
     def forward_native(
         self,
@@ -79,7 +77,7 @@ class AscendAttentionBackendImpl(AttentionImpl):
         value: torch.Tensor,
         attn_metadata: AttentionMetadata = None,
     ) -> torch.Tensor:
-        if self.mindiesd_available:
+        if self.enable_mindiesd:
             from mindiesd import attention_forward
             attention_mask = attn_metadata.attn_mask if attn_metadata else None
             output = attention_forward(
