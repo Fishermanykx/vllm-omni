@@ -2,7 +2,7 @@
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 
 import os
-import importlib.util
+from importlib.util import find_spec
 import torch
 from vllm.logger import init_logger
 
@@ -45,7 +45,7 @@ class AscendAttentionBackendImpl(AttentionImpl):
         self.causal = causal
         self.softmax_scale = softmax_scale
         self.enable_mindiesd = os.environ.get("ENABLE_MINDIE_SD", "").lower() in ("true", "1")
-        if self.enable_mindiesd and not importlib.util.find_spec("mindiesd"):
+        if self.enable_mindiesd and not find_spec("mindiesd"):
             self.enable_mindiesd = False
 
     def forward_native(
