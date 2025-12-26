@@ -74,9 +74,9 @@ class AscendAttentionBackendImpl(AttentionImpl):
     ) -> torch.Tensor:
         try:
             from mindiesd import attention_forward
-        except:
+        except ImportError:
             return self.forward_native(query, key, value, attn_metadata)
-        
+
         attention_mask = attn_metadata.attn_mask if attn_metadata else None
 
         output = attention_forward(

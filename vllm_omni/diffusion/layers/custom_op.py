@@ -3,7 +3,7 @@ from typing import Any
 
 import torch.nn as nn
 
-from vllm_omni.utils.platform_utils import detect_device_type, is_rocm
+from vllm_omni.utils.platform_utils import detect_device_type, is_rocm, is_npu
 
 
 class CustomOp(nn.Module):
@@ -15,7 +15,6 @@ class CustomOp(nn.Module):
     def __init__(self) -> None:
         super().__init__()
         self.is_cuda = detect_device_type() == "cuda"
-        self.is_npu = detect_device_type() == "npu"
         self._forward_method = self.dispatch_forward()
 
     def dispatch_forward(self) -> Callable:
@@ -23,8 +22,12 @@ class CustomOp(nn.Module):
             return self.forward_hip
         elif self.is_cuda:
             return self.forward_cuda
-        elif self.is_npu:
-            return self.forward_npu
+        elif is_npu():
+            try:
+                import mindiesd
+                return self.forward_mindiesd
+            except ImportError:
+                return self.forward_npu
         else:
             return self.forward_native
 
@@ -44,6 +47,9 @@ class CustomOp(nn.Module):
 
     def forward_npu(self, *args, **kwargs):
         raise NotImplementedError
+    
+    def forward_mindiesd(self, *args, **kwargs):
+        return self.forward_npu(*args, **kwargs)
 
     def forward_hip(self, *args, **kwargs):
         # By default, we assume that HIP ops are compatible with CUDA ops.
