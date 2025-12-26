@@ -74,7 +74,7 @@ class AscendAttentionBackendImpl(AttentionImpl):
         value: torch.Tensor,
         attn_metadata: AttentionMetadata = None,
     ) -> torch.Tensor:
-        if os.environ.get("ENABLE_MINDIE_SD", "").lower() in ("true", "1") and find_spec("mindiesd"):
+        if find_spec("mindiesd"):
             from mindiesd import attention_forward
             attention_mask = attn_metadata.attn_mask if attn_metadata else None
             output = attention_forward(
