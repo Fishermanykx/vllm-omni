@@ -1,7 +1,5 @@
 from collections.abc import Callable
 from typing import Any
-import os
-import importlib.util
 
 import torch.nn as nn
 
@@ -25,11 +23,7 @@ class CustomOp(nn.Module):
         elif self.is_cuda:
             return self.forward_cuda
         elif is_npu():
-            enable_mindiesd: bool = os.environ.get("ENABLE_MINDIE_SD", "").lower() in ("true", "1")
-            if enable_mindiesd and importlib.util.find_spec("mindiesd"):
-                return self.forward_mindiesd
-            else:
-                return self.forward_npu
+            return self.forward_npu
         else:
             return self.forward_native
 
@@ -49,9 +43,6 @@ class CustomOp(nn.Module):
 
     def forward_npu(self, *args, **kwargs):
         raise NotImplementedError
-    
-    def forward_mindiesd(self, *args, **kwargs):
-        return self.forward_npu(*args, **kwargs)
 
     def forward_hip(self, *args, **kwargs):
         # By default, we assume that HIP ops are compatible with CUDA ops.
