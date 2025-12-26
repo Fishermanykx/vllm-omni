@@ -82,25 +82,6 @@ class AdaLayerNorm(CustomOp):
         index: torch.Tensor = None,
     ) -> torch.Tensor:
         return self.forward_native(x, mod_params, index)
-    
-    def forward_mindiesd(
-        self,
-        x: torch.Tensor,
-        mod_params: torch.Tensor,
-        index: torch.Tensor = None,
-    ) -> torch.Tensor:
-        shift_result, scale_result, gate_result = self.preprocess(mod_params, index)
-
-        from mindiesd import layernorm_scale_shift
-        output = layernorm_scale_shift(
-            self.layernorm, 
-            x, 
-            scale=scale_result, 
-            shift=shift_result, 
-            fused=True
-        )
-
-        return output, gate_result
 
     def forward_npu(
         self,
