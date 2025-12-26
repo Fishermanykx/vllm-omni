@@ -117,13 +117,27 @@ class RotaryEmbedding(CustomOp):
                 seqlen = cos.shape[0]
                 sin = sin.unsqueeze(0).unsqueeze(2).unsqueeze(-1).expand(-1, -1, -1, -1, 2).reshape(1, seqlen, 1, -1)
                 cos = cos.unsqueeze(0).unsqueeze(2).unsqueeze(-1).expand(-1, -1, -1, -1, 2).reshape(1, seqlen, 1, -1)
-            return rotary_position_embedding(x, cos, sin, rotated_mode="rotated_interleaved", head_first=False, fused=True)
+            return rotary_position_embedding(
+                x, 
+                cos, 
+                sin, 
+                rotated_mode="rotated_interleaved", 
+                head_first=False, 
+                fused=True
+            )
         else:
             if half_head_dim:
                 seqlen = cos.shape[0]
                 sin = sin.unsqueeze(0).unsqueeze(2).repeat(1, 1, 1, 2)
                 cos = cos.unsqueeze(0).unsqueeze(2).repeat(1, 1, 1, 2)
-            return rotary_position_embedding(x, cos, sin, rotated_mode="rotated_half", head_first=False, fused=True)
+            return rotary_position_embedding(
+                x, 
+                cos, 
+                sin, 
+                rotated_mode="rotated_half", 
+                head_first=False, 
+                fused=True
+            )
 
     def forward_npu(
         self,

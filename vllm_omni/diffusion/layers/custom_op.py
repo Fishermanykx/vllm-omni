@@ -1,6 +1,7 @@
 from collections.abc import Callable
 from typing import Any
 import os
+import importlib.util
 
 import torch.nn as nn
 
@@ -25,12 +26,8 @@ class CustomOp(nn.Module):
             return self.forward_cuda
         elif is_npu():
             enable_mindiesd: bool = os.environ.get("ENABLE_MINDIE_SD", "").lower() in ("true", "1")
-            if enable_mindiesd:
-                try:
-                    import mindiesd
-                    return self.forward_mindiesd
-                except ImportError:
-                    return self.forward_npu
+            if enable_mindiesd and importlib.util.find_spec("mindiesd"):
+                return self.forward_mindiesd
             else:
                 return self.forward_npu
         else:
