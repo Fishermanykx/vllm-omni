@@ -24,14 +24,14 @@ class CustomOp(nn.Module):
         elif self.is_cuda:
             return self.forward_cuda
         elif is_npu():
-            try:
-                import mindiesd
-                enable_mindiesd: bool = os.environ.get("ENABLE_MINDIE_SD", "").lower() in ("true", "1")
-                if enable_mindiesd:
+            enable_mindiesd: bool = os.environ.get("ENABLE_MINDIE_SD", "").lower() in ("true", "1")
+            if enable_mindiesd:
+                try:
+                    import mindiesd
                     return self.forward_mindiesd
-                else:
+                except ImportError:
                     return self.forward_npu
-            except ImportError:
+            else:
                 return self.forward_npu
         else:
             return self.forward_native

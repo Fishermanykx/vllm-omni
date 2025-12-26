@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 
+import os
 import torch
 from vllm.logger import init_logger
 
@@ -42,6 +43,12 @@ class AscendAttentionBackendImpl(AttentionImpl):
     ) -> None:
         self.causal = causal
         self.softmax_scale = softmax_scale
+        self.mindiesd_available = os.environ.get("ENABLE_MINDIE_SD", "").lower() in ("true", "1")
+        if self.mindiesd_available:
+            try:
+                import mindiesd
+            except ImportError:
+                self.mindiesd_available = False
 
     def forward_native(
         self,
