@@ -29,7 +29,7 @@ from vllm_omni.diffusion.distributed.parallel_state import (
 )
 from vllm_omni.diffusion.forward_context import set_forward_context
 from vllm_omni.diffusion.lora.manager import DiffusionLoRAManager
-from vllm_omni.diffusion.profiler import CurrentProfiler
+from vllm_omni.diffusion.profiler import CurrentProfiler, configure_profiler
 from vllm_omni.diffusion.request import OmniDiffusionRequest
 from vllm_omni.diffusion.worker.diffusion_model_runner import DiffusionModelRunner
 from vllm_omni.lora.request import LoRARequest
@@ -123,6 +123,10 @@ class DiffusionWorker:
             lora_path=self.od_config.lora_path,
             lora_scale=self.od_config.lora_scale,
         )
+
+        # Configure profiler with CLI-based settings
+        configure_profiler(self.od_config.profiler_config)
+
         logger.info(f"Worker {self.rank}: Initialization complete.")
 
     def generate(self, request: OmniDiffusionRequest) -> DiffusionOutput:

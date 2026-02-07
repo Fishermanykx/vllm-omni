@@ -744,8 +744,8 @@ def _stage_worker(
         if task_type == OmniStageTaskType.PROFILER_START:
             if stage_type == "diffusion":
                 try:
-                    profile_dir = _os.environ.get("VLLM_TORCH_PROFILER_DIR", "./profiles")
-                    _os.makedirs(profile_dir, exist_ok=True)
+                    # Directory creation is now handled by DiffusionEngine.start_profile()
+                    # which uses CLI-based config or falls back to env var
                     trace_filename = f"stage_{stage_id}_diffusion_{int(_time.time())}"
                     stage_engine.start_profile(trace_filename=trace_filename)
                     logger.info("[Stage-%s] Diffusion Torch profiler started", stage_id)
@@ -1297,9 +1297,8 @@ async def _stage_worker_async(
         if task_type == OmniStageTaskType.PROFILER_START:
             if stage_type == "diffusion":
                 try:
-                    # Sync call is safe here — diffusion profiling is lightweight
-                    profile_dir = os.environ.get("VLLM_TORCH_PROFILER_DIR", "./profiles")
-                    os.makedirs(profile_dir, exist_ok=True)
+                    # Directory creation is now handled by DiffusionEngine.start_profile()
+                    # which uses CLI-based config or falls back to env var
                     trace_filename = f"stage_{stage_id}_diffusion_{int(time.time())}"
                     stage_engine.start_profile(trace_filename=trace_filename)
                     logger.info("[Stage-%s] Diffusion Torch profiler started", stage_id)

@@ -1,15 +1,21 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 
+from __future__ import annotations
+
 import os
 import subprocess
 from contextlib import nullcontext
+from typing import TYPE_CHECKING
 
 import torch
 from torch.profiler import ProfilerActivity, profile
 from vllm.logger import init_logger
 
 from .base import ProfilerBase
+
+if TYPE_CHECKING:
+    from .config import DiffusionProfilerConfig
 
 logger = init_logger(__name__)
 
@@ -19,10 +25,18 @@ class TorchProfiler(ProfilerBase):
     Torch-based profiler configured for End-to-End continuous recording.
     Uses 'on_trace_ready' to handle Trace export.
     Compression is offloaded to a background subprocess to avoid blocking the worker loop.
+
+    Now supports config-based initialization following vLLM's profiler pattern.
     """
 
     _profiler: profile | None = None
     _trace_template: str = ""
+    _config: DiffusionProfilerConfig | None = None
+
+    @classmethod
+    def set_config(cls, config: DiffusionProfilerConfig) -> None:
+        """Set the profiler configuration."""
+        cls._config = config
 
     @classmethod
     def start(cls, trace_path_template: str) -> str:
@@ -48,6 +62,17 @@ class TorchProfiler(ProfilerBase):
 
         logger.info(f"[Rank {rank}] Starting End-to-End Torch profiler")
 
+        # Get config values (use defaults if no config set)
+        config = cls._config
+        use_gzip = config.torch_profiler_use_gzip if config else True
+        record_shapes = config.torch_profiler_record_shapes if config else True
+        profile_memory = config.torch_profiler_with_memory if config else True
+        with_stack = config.torch_profiler_with_stack if config else True
+        with_flops = config.torch_profiler_with_flops if config else True
+        wait_steps = config.torch_profiler_wait_steps if config else 0
+        warmup_steps = config.torch_profiler_warmup_steps if config else 0
+        active_steps = config.torch_profiler_active_steps if config else 100000
+
         # 3. Define the on_trace_ready handler
         def trace_handler(p):
             nonlocal json_file
@@ -57,37 +82,39 @@ class TorchProfiler(ProfilerBase):
                 p.export_chrome_trace(json_file)
                 logger.info(f"[Rank {rank}] Trace exported to {json_file}")
 
-                try:
-                    subprocess.Popen(["gzip", "-f", json_file])
-                    logger.info(f"[Rank {rank}] Triggered background compression for {json_file}")
-                    # Update variable to point to the eventual file
-                    json_file = f"{json_file}.gz"
-                except Exception as compress_err:
-                    logger.warning(f"[Rank {rank}] Background gzip failed to start: {compress_err}")
+                if use_gzip:
+                    try:
+                        subprocess.Popen(["gzip", "-f", json_file])
+                        logger.info(f"[Rank {rank}] Triggered background compression for {json_file}")
+                        # Update variable to point to the eventual file
+                        json_file = f"{json_file}.gz"
+                    except Exception as compress_err:
+                        logger.warning(f"[Rank {rank}] Background gzip failed to start: {compress_err}")
 
             except Exception as e:
                 logger.warning(f"[Rank {rank}] Failed to export trace: {e}")
 
-        # 4. Initialize profiler with long active period
+        # 4. Initialize profiler with configurable schedule
         cls._profiler = profile(
             activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA],
             schedule=torch.profiler.schedule(
-                wait=0,
-                warmup=0,
-                active=100000,  # long capture window
+                wait=wait_steps,
+                warmup=warmup_steps,
+                active=active_steps,
             ),
             on_trace_ready=trace_handler,
-            record_shapes=True,
-            profile_memory=True,
-            with_stack=True,
-            with_flops=True,
+            record_shapes=record_shapes,
+            profile_memory=profile_memory,
+            with_stack=with_stack,
+            with_flops=with_flops,
         )
 
         # 5. Start profiling
         cls._profiler.start()
 
         # Return the expected final path
-        return f"{trace_path_template}_rank{rank}.json.gz"
+        suffix = ".gz" if use_gzip else ""
+        return f"{trace_path_template}_rank{rank}.json{suffix}"
 
     @classmethod
     def stop(cls) -> dict | None:
@@ -95,10 +122,13 @@ class TorchProfiler(ProfilerBase):
             return None
 
         rank = cls._get_rank()
+        config = cls._config
+        use_gzip = config.torch_profiler_use_gzip if config else True
 
         # Determine expected paths
         base_path = f"{cls._trace_template}_rank{rank}"
-        gz_path = f"{base_path}.json.gz"
+        suffix = ".gz" if use_gzip else ""
+        trace_path = f"{base_path}.json{suffix}"
 
         try:
             # This triggers trace_handler synchronously
@@ -109,8 +139,8 @@ class TorchProfiler(ProfilerBase):
 
         cls._profiler = None
 
-        # We return the .gz path assuming background compression will succeed.
-        return {"trace": gz_path, "table": None}
+        # We return the path assuming background compression will succeed (if enabled).
+        return {"trace": trace_path, "table": None}
 
     @classmethod
     def step(cls):
