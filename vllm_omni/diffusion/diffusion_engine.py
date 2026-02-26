@@ -209,8 +209,10 @@ class DiffusionEngine:
             trace_filename = f"stage_0_diffusion_{int(time.time())}_rank"
 
         profiler_config = self.od_config.profiler_config
-        if profiler_config is not None and profiler_config.torch_profiler_dir:
-            trace_dir = profiler_config.torch_profiler_dir
+        if profiler_config is None or not profiler_config.torch_profiler_dir:
+            logger.warning("Cannot start profiling: profiler_config is not set or torch_profiler_dir is empty.")
+            return
+        trace_dir = profiler_config.torch_profiler_dir
 
         # Expand ~ and ~user, then make absolute (robust against cwd changes)
         trace_dir = os.path.expanduser(trace_dir)
