@@ -377,7 +377,7 @@ def main(args):
         for i, prompt in enumerate(prompts):
             prompt["modalities"] = output_modalities
 
-    profiler_enabled = bool(os.getenv("VLLM_TORCH_PROFILER_DIR"))
+    profiler_enabled = args.profiler_dir is not None
     if profiler_enabled:
         omni_llm.start_profile(stages=[0])
     omni_generator = omni_llm.generate(prompts, sampling_params_list, py_generator=args.py_generator)
@@ -538,6 +538,12 @@ def parse_args():
         action="store_true",
         default=False,
         help="Use py_generator mode. The returned type of Omni.generate() is a Python Generator object.",
+    )
+    parser.add_argument(
+        "--profiler-dir",
+        type=str,
+        default=None,
+        help="Directory to save torch profiler traces. Enables profiling when set.",
     )
     return parser.parse_args()
 

@@ -81,6 +81,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--resolution", type=int, default=640)
     parser.add_argument("--color-format", type=str, default="RGB")
 
+    # Profiler Options
+    parser.add_argument(
+        "--profiler_dir",
+        type=str,
+        default=None,
+        help="Directory to save torch profiler traces. Enables profiling when set.",
+    )
+
     # Acceleration + Optimization Options
     parser.add_argument("--cache_dit_fn_compute_blocks", type=int, default=1)
     parser.add_argument("--cache_dit_bn_compute_blocks", type=int, default=0)
@@ -146,6 +154,14 @@ async def main():
     else:
         cache_config = None
 
+    # ---- Profiler Config ----
+    profiler_config = None
+    if args.profiler_dir:
+        profiler_config = {
+            "profiler": "torch",
+            "torch_profiler_dir": args.profiler_dir,
+        }
+
     # ---- Initialize Omni ----
     omni = Omni(
         model=args.model,
@@ -158,12 +174,13 @@ async def main():
         enable_cpu_offload=args.enable_cpu_offload,
         diffusion_load_format="dummy",
         custom_pipeline_args={"pipeline_class": "custom_pipeline.CustomPipeline"},
+        profiler_config=profiler_config,
     )
 
     print(">>> Pipeline loaded successfully")
 
     # ---- Profiling + Info ----
-    profiler_enabled = bool(os.getenv("VLLM_TORCH_PROFILER_DIR"))
+    profiler_enabled = args.profiler_dir is not None
     print(f"\n{'=' * 60}")
     print("Generation Configuration")
     print(f"Model: {args.model}")

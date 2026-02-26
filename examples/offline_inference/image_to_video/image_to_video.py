@@ -19,7 +19,6 @@ Usage:
 """
 
 import argparse
-import os
 from pathlib import Path
 
 import numpy as np
@@ -92,6 +91,12 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Disable torch.compile and force eager execution.",
     )
+    parser.add_argument(
+        "--profiler-dir",
+        type=str,
+        default=None,
+        help="Directory to save torch profiler traces. Enables profiling when set.",
+    )
     return parser.parse_args()
 
 
@@ -125,8 +130,15 @@ def main():
     # Resize image to target dimensions
     image = image.resize((width, height), PIL.Image.Resampling.LANCZOS)
 
-    # Check if profiling is requested via environment variable
-    profiler_enabled = bool(os.getenv("VLLM_TORCH_PROFILER_DIR"))
+    # Build profiler config from CLI arg
+    profiler_config = None
+    if args.profiler_dir:
+        profiler_config = {
+            "profiler": "torch",
+            "torch_profiler_dir": args.profiler_dir,
+        }
+
+    profiler_enabled = args.profiler_dir is not None
     parallel_config = DiffusionParallelConfig(
         cfg_parallel_size=args.cfg_parallel_size,
     )
@@ -140,6 +152,7 @@ def main():
         enable_cpu_offload=args.enable_cpu_offload,
         parallel_config=parallel_config,
         enforce_eager=args.enforce_eager,
+        profiler_config=profiler_config,
     )
 
     if profiler_enabled:
