@@ -4,32 +4,41 @@
 
 vLLM-Omni uses the PyTorch Profiler to analyze performance across both **multi-stage omni-modality models** and **diffusion models**.
 
-### 1. Set the Output Directory
-Before running any script, set this environment variable. The system detects this and automatically saves traces here.
+### 1. Configure Profiling in the Stage YAML
 
-```bash
-export VLLM_TORCH_PROFILER_DIR=./profiles
+Enable profiling by adding `profiler_config` under `engine_args` for the stage(s) you want to profile in your stage config YAML:
+
+```yaml
+stage_args:
+  - stage_id: 0
+    stage_type: llm
+    engine_args:
+      # ... other engine args ...
+      profiler_config:
+        profiler: torch
+        torch_profiler_dir: ./perf
 ```
+
+| Field | Description |
+|---|---|
+| `profiler` | Profiler backend to use. Currently supports `torch`. |
+| `torch_profiler_dir` | Directory where trace files are saved. Created automatically if it doesn't exist. |
+
+> **Tip:** Only enable `profiler_config` on stages you actually need to profile. Stages without it will not start a profiler, keeping overhead minimal.
 
 ### 2. Profiling Omni-Modality Models
 
-It is best to limit profiling to one iteration to keep trace files manageable.
-
-```bash
-export VLLM_PROFILER_MAX_ITERS=1
-```
-
 **Selective Stage Profiling**
-The profiler is default to function across all stages. But It is highly recommended to profile specific stages by passing the stages list, preventing from producing too large trace files:
+
+It is highly recommended to profile specific stages to prevent producing overly large trace files:
+
 ```python
 # Profile all stages
 omni_llm.start_profile()
 
 # Only profile Stage 1
 omni_llm.start_profile(stages=[1])
-```
 
-```python
 # Stage 0 (Thinker) and Stage 2 (Audio Decoder) for qwen omni
 omni_llm.start_profile(stages=[0, 2])
 ```
@@ -41,12 +50,10 @@ omni_llm.start_profile(stages=[0, 2])
 ```python
 from vllm_omni import omni_llm
 
-profiler_enabled = bool(os.getenv("VLLM_TORCH_PROFILER_DIR"))
 profiler_stages = [0]  # Only profile the stages you need
 
-# 1. Start profiling if enabled
-if profiler_enabled:
-    omni_llm.start_profile(stages=profiler_stages)
+# 1. Start profiling
+omni_llm.start_profile(stages=profiler_stages)
 
 # Initialize generator
 omni_generator = omni_llm.generate(prompts, sampling_params_list, py_generator=args.py_generator)
@@ -106,8 +113,7 @@ python end2end.py --output-wav output_audio \
 Diffusion profiling is End-to-End, capturing encoding, denoising loops, and decoding.
 
 **CLI Usage:**
-```python
-
+```bash
 python image_to_video.py \
     --model Wan-AI/Wan2.2-I2V-A14B-Diffusers \
     --image qwen-bear.png \
@@ -141,7 +147,6 @@ python image_to_video.py \
     --flow-shift 12.0 \
     --fps 16 \
     --output i2v_output.mp4
-
 ```
 
 **Examples**:
@@ -150,16 +155,16 @@ python image_to_video.py \
 
 2. **Wan-AI/Wan2.2-I2V-A14B-Diffusers**:   [https://github.com/vllm-project/vllm-omni/tree/main/examples/offline_inference/image_to_video](https://github.com/vllm-project/vllm-omni/tree/main/examples/offline_inference/image_to_video)
 
-### 4. Analyzing Omni Traces
+### 4. Analyzing Traces
 
-Output files are saved to your configured ```VLLM_TORCH_PROFILER_DIR```.
+Output files are saved to the `torch_profiler_dir` specified in your stage YAML config.
 
 **Output**
-**Chrome Trace** (```.json.gz```): Visual timeline of kernels and stages. Open in Perfetto UI.
+**Chrome Trace** (`.json.gz`): Visual timeline of kernels and stages. Open in Perfetto UI.
 
 **Viewing Tools:**
 
-- [Perfetto](https://ui.perfetto.dev/)(recommended)
-- ```chrome://tracing```(Chrome only)
+- [Perfetto](https://ui.perfetto.dev/) (recommended)
+- `chrome://tracing` (Chrome only)
 
 **Note**: vLLM-Omni reuses the PyTorch Profiler infrastructure from vLLM. See the official vLLM profiler documentation:  [vLLM Profiling Guide](https://docs.vllm.ai/en/stable/contributing/profiling/)

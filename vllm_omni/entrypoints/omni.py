@@ -497,12 +497,8 @@ class OmniBase:
         logger.warning(f"[{self._name}] Stage initialization timeout. Troubleshooting Steps:\n{formatted_suggestions}")
 
     def _is_profiler_enabled(self, stage_id: int) -> bool:
-        """Check if profiler config is set for a given stage."""
+        """Check if profiler config is set for a given stage via engine_args in YAML."""
         stage = self.stage_list[stage_id]
-        # For diffusion stages, profiling is controlled by VLLM_TORCH_PROFILER_DIR env var
-        if stage.stage_type == "diffusion":
-            return True
-        # For LLM stages, check if profiler_config is set in engine_args
         engine_args = getattr(stage.stage_config, "engine_args", None)
         if engine_args is None:
             return False
