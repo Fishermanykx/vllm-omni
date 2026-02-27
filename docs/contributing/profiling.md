@@ -107,10 +107,9 @@ python end2end.py --output-wav output_audio \
 
 2. **Qwen3-Omni**:   [https://github.com/vllm-project/vllm-omni/blob/main/examples/offline_inference/qwen3_omni/end2end.py](https://github.com/vllm-project/vllm-omni/blob/main/examples/offline_inference/qwen3_omni/end2end.py)
 
-
 ### 3. Profiling diffusion models
 
-Diffusion profiling is End-to-End, capturing encoding, denoising loops, and decoding.
+Diffusion profiling is End-to-End, capturing encoding, denoising loops, and decoding. Standalone diffusion scripts use `--profiler-dir` to enable profiling (this sets `profiler_config` internally).
 
 **CLI Usage:**
 ```bash
@@ -118,6 +117,7 @@ python image_to_video.py \
     --model Wan-AI/Wan2.2-I2V-A14B-Diffusers \
     --image qwen-bear.png \
     --prompt "A cat playing with yarn, smooth motion" \
+    --profiler-dir ./perf \
     \
     # Minimize Spatial Dimensions (Optional but helpful):
     #    Drastically reduces memory usage so the profiler doesn't
@@ -149,13 +149,55 @@ python image_to_video.py \
     --output i2v_output.mp4
 ```
 
+> **Note:** For diffusion stages within a multi-stage omni pipeline, use `profiler_config` in the stage YAML instead (see Section 1).
+
 **Examples**:
 
 1. **Qwen image edit**:  [https://github.com/vllm-project/vllm-omni/blob/main/examples/offline_inference/image_to_image/image_edit.py](https://github.com/vllm-project/vllm-omni/blob/main/examples/offline_inference/image_to_image/image_edit.py)
 
 2. **Wan-AI/Wan2.2-I2V-A14B-Diffusers**:   [https://github.com/vllm-project/vllm-omni/tree/main/examples/offline_inference/image_to_video](https://github.com/vllm-project/vllm-omni/tree/main/examples/offline_inference/image_to_video)
 
-### 4. Analyzing Traces
+### 4. Profiling Online Serving
+
+When `profiler_config` is set in the stage YAML, the server automatically exposes `/start_profile` and `/stop_profile` HTTP endpoints.
+
+**1. Start the server** with a stage YAML that has `profiler_config` enabled:
+```bash
+vllm serve Qwen/Qwen2.5-Omni-7B \
+    --omni \
+    --stage-configs-path qwen2_5_omni.yaml \
+    --port 8091
+```
+
+**2. Start profiling** by sending a POST request:
+```bash
+# Profile all stages that have profiler_config set
+curl -X POST http://localhost:8091/start_profile
+
+# Profile specific stages only
+curl -X POST http://localhost:8091/start_profile \
+    -H "Content-Type: application/json" \
+    -d '{"stages": [0]}'
+```
+
+**3. Send your inference requests** as normal while the profiler is running.
+
+**4. Stop profiling** and collect traces:
+```bash
+# Stop all stages
+curl -X POST http://localhost:8091/stop_profile
+
+# Stop specific stages (must match the stages you started)
+curl -X POST http://localhost:8091/stop_profile \
+    -H "Content-Type: application/json" \
+    -d '{"stages": [0]}'
+```
+
+Trace files are written to the `torch_profiler_dir` specified in your stage YAML.
+
+> **Important:** Always stop the same stages you started. Stopping a stage that was never started will produce errors.
+
+### 6. Analyzing Traces
 
 Output files are saved to the `torch_profiler_dir` specified in your stage YAML config.
 
