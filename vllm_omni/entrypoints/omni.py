@@ -605,13 +605,11 @@ class OmniBase:
                     else:
                         logger.warning(f"[{self._name}] Stage-{stage_id} returned non-dict data: {type(stage_data)}")
                 else:
-                    # Fallback for non-diffusion stages
                     logger.warning(
-                        "[%s] Stage-%s does not support synchronous stop_profile. Falling back to async.",
+                        "[%s] Stage-%s does not have stop_profile method.",
                         self._name,
                         stage_id,
                     )
-                    stage.submit({"type": OmniStageTaskType.PROFILER_STOP})
 
         # Final debug output
         logger.info(

@@ -35,11 +35,11 @@ from vllm_omni.diffusion.distributed.parallel_state import (
 )
 from vllm_omni.diffusion.forward_context import set_forward_context
 from vllm_omni.diffusion.lora.manager import DiffusionLoRAManager
-from vllm_omni.diffusion.profiler import CurrentProfiler, configure_profiler
 from vllm_omni.diffusion.request import OmniDiffusionRequest
 from vllm_omni.diffusion.worker.diffusion_model_runner import DiffusionModelRunner
 from vllm_omni.lora.request import LoRARequest
 from vllm_omni.platforms import current_omni_platform
+from vllm_omni.profiler import OmniTorchProfilerWrapper
 from vllm_omni.worker.gpu_memory_utils import get_process_gpu_memory
 
 logger = init_logger(__name__)
@@ -81,8 +81,15 @@ class DiffusionWorker:
         )
         self.load_model(load_format=self.od_config.diffusion_load_format)
         self.init_lora_manager()
-        # Configure profiler with CLI-based settings
-        configure_profiler(self.od_config.profiler_config)
+        # Initialize profiler if configured
+        self.profiler: OmniTorchProfilerWrapper | None = None
+        profiler_config = self.od_config.profiler_config
+        if profiler_config and profiler_config.profiler == "torch":
+            self.profiler = OmniTorchProfilerWrapper(
+                profiler_config=profiler_config,
+                worker_name=f"diffusion_worker_{self.rank}",
+                local_rank=self.local_rank,
+            )
         logger.info(f"Worker {self.rank}: Initialization complete.")
 
     def init_device(self) -> None:
@@ -168,15 +175,22 @@ class DiffusionWorker:
         """Generate output for the given requests."""
         return self.execute_model(request, self.od_config)
 
-    @classmethod
-    def start_profile(cls, trace_path_template: str) -> str:
+    def start_profile(self, trace_path_template: str) -> str:
         """Start profiling for this GPU worker."""
-        return CurrentProfiler.start(trace_path_template)
+        if self.profiler is None:
+            logger.warning("Profiler not initialized, skipping start_profile")
+            return ""
+        self.profiler.set_trace_filename(trace_path_template)
+        self.profiler.start()
+        return trace_path_template
 
-    @classmethod
-    def stop_profile(cls) -> dict | None:
+    def stop_profile(self) -> dict:
         """Stop profiling and return the result dictionary."""
-        return CurrentProfiler.stop()
+        if self.profiler is None:
+            logger.warning("Profiler not initialized, skipping stop_profile")
+            return {}
+        self.profiler.stop()
+        return self.profiler.get_results()
 
     def execute_model(self, req: OmniDiffusionRequest, od_config: OmniDiffusionConfig) -> DiffusionOutput:
         """Execute a forward pass by delegating to the model runner."""
