@@ -2,6 +2,7 @@
 """Script to profile a single video generation request.
 
 Usage:
+    vllm serve Wan-AI/Wan2.2-I2V-A14B-Diffusers --omni --port 8091 --profiler-config '{"profiler": "torch", "torch_profiler_dir": "./vllm_profile"}'
     python profiler_script.py --host localhost --port 8091
 """
 
