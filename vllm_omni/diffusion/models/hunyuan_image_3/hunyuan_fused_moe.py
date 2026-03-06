@@ -95,7 +95,8 @@ def _get_npu_impl_class() -> type:
     from vllm_ascend.ascend_forward_context import MoECommType
     from vllm_ascend.utils import AscendDeviceType, get_ascend_device_type
 
-    # Workaround for vllm-ascend: mc2_group must be initialized to prevent errors, despite being unused in FusedMoE communication.
+    # Workaround for vllm-ascend: mc2_group must be initialized to prevent errors, 
+    # despite being unused in FusedMoE communication.
     world_size = torch.distributed.get_world_size()
     data_parallel_size = get_data_parallel_world_size()
     tensor_parallel_size = get_tensor_model_parallel_world_size()
@@ -152,6 +153,7 @@ def _get_npu_impl_class() -> type:
             return super().forward(hidden_states, router_logits)
 
         def __del__(self):
+            import vllm_ascend.distributed.parallel_state as vllm_ascend_parallel_state
             if vllm_ascend_parallel_state._MC2:
                 vllm_ascend_parallel_state._MC2.destroy()
             vllm_ascend_parallel_state._MC2 = None
