@@ -78,6 +78,21 @@ class OmniKVTransferManager:
             else (None, None)
         )
 
+        recv_from_stage, recv_to_stage = self.recv_stages
+        if (
+            self.config.need_recv_cache
+            and recv_from_stage is not None
+            and recv_to_stage is not None
+            and recv_from_stage == recv_to_stage
+        ):
+            logger.warning(
+                "Invalid self-loop KV receive configuration detected (%s -> %s). "
+                "Disabling need_recv_cache to avoid request timeout.",
+                recv_from_stage,
+                recv_to_stage,
+            )
+            self.config.need_recv_cache = False
+
     @classmethod
     def _create(cls, cfg: dict | None) -> "OmniKVTransferManager":
         """Create manager from raw config dict."""
