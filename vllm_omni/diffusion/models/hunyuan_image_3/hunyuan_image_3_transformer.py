@@ -2388,9 +2388,12 @@ class HunyuanImage3Text2ImagePipeline(DiffusionPipeline):
         # Sampling loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         self._num_timesteps = len(timesteps)
+        taylor_cache_manager = getattr(self.model, "_taylor_cache_manager", None)
 
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
+                if taylor_cache_manager is not None:
+                    taylor_cache_manager.set_step(i)
                 # expand the latents if we are doing classifier free guidance
                 latent_model_input = torch.cat([latents] * cfg_factor)
                 # latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
