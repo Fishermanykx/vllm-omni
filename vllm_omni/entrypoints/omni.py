@@ -200,6 +200,17 @@ class OmniBase:
             return {
                 "rel_l1_thresh": 0.2,
             }
+        if cache_backend == "taylor_cache":
+            return {
+                "taylor_cache_interval": 4,
+                "taylor_cache_order": 2,
+                "taylor_cache_enable_first_enhance": False,
+                "taylor_cache_first_enhance_steps": 3,
+                "taylor_cache_enable_tailing_enhance": False,
+                "taylor_cache_tailing_enhance_steps": 1,
+                "taylor_cache_low_freqs_order": 0,
+                "taylor_cache_high_freqs_order": 2,
+            }
         return None
 
     def _normalize_cache_config(self, cache_backend: str | None, cache_config: Any | None) -> Any | None:

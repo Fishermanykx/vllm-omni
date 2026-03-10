@@ -2,6 +2,7 @@ from typing import Any
 
 from vllm_omni.diffusion.cache.base import CacheBackend
 from vllm_omni.diffusion.cache.cache_dit_backend import CacheDiTBackend
+from vllm_omni.diffusion.cache.taylor_cache_backend import TaylorCacheBackend
 from vllm_omni.diffusion.cache.teacache.backend import TeaCacheBackend
 from vllm_omni.diffusion.data import DiffusionCacheConfig
 
@@ -12,13 +13,15 @@ def get_cache_backend(cache_backend: str | None, cache_config: Any) -> CacheBack
     This is a selector function that routes to the appropriate backend implementation.
     - cache_dit: Uses CacheDiTBackend with enable()/refresh() interface
     - tea_cache: Uses TeaCacheBackend with enable()/refresh() interface
+    - taylor_cache: Uses TaylorCacheBackend for HunyuanImage3
 
     Args:
-        cache_backend: Cache backend name ("cache_dit", "tea_cache", or None).
+        cache_backend: Cache backend name ("cache_dit", "tea_cache", "taylor_cache", or None).
         cache_config: Cache configuration (dict or DiffusionCacheConfig instance).
 
     Returns:
-        Cache backend instance (CacheDiTBackend or TeaCacheBackend) if cache_backend is set,
+        Cache backend instance (CacheDiTBackend, TeaCacheBackend, or TaylorCacheBackend)
+        if cache_backend is set,
         None otherwise.
 
     Raises:
@@ -34,5 +37,10 @@ def get_cache_backend(cache_backend: str | None, cache_config: Any) -> CacheBack
         return CacheDiTBackend(cache_config)
     elif cache_backend == "tea_cache":
         return TeaCacheBackend(cache_config)
+    elif cache_backend == "taylor_cache":
+        return TaylorCacheBackend(cache_config)
     else:
-        raise ValueError(f"Unsupported cache backend: {cache_backend}. Supported: 'cache_dit', 'tea_cache'")
+        raise ValueError(
+            f"Unsupported cache backend: {cache_backend}. "
+            "Supported: 'cache_dit', 'tea_cache', 'taylor_cache'"
+        )

@@ -11,6 +11,7 @@ import torch.nn as nn
 from diffusers.schedulers.scheduling_flow_match_euler_discrete import FlowMatchEulerDiscreteScheduler
 from transformers.generation.configuration_utils import GenerationConfig
 from transformers.generation.utils import ALL_CACHE_NAMES, GenerationMixin
+from transformers.modeling_outputs import BaseModelOutputWithPast
 from transformers.models.siglip2 import Siglip2VisionConfig, Siglip2VisionModel
 from transformers.utils.generic import ModelOutput
 from vllm.config.vllm import get_current_vllm_config
@@ -910,26 +911,62 @@ class HunyuanImage3Pipeline(HunyuanImage3PreTrainedModel, GenerationMixin):
         # decoder outputs consists of (dec_features, layer_state, dec_hidden, dec_attn)
         from vllm.forward_context import set_forward_context
 
-        with set_forward_context(None, self.vllm_config):
-            outputs = self.model(
-                input_ids=input_ids,
-                attention_mask=attention_mask,
-                position_ids=position_ids,
-                past_key_values=past_key_values,
-                inputs_embeds=inputs_embeds,
-                use_cache=use_cache,
-                output_attentions=output_attentions,
-                output_hidden_states=output_hidden_states,
-                return_dict=return_dict,
-                custom_pos_emb=custom_pos_emb,
-                mode=mode,
-                first_step=first_step,
-                query_lens=query_lens,
-                seq_lens=seq_lens,
-                num_image_tokens=num_image_tokens,
-                gen_timestep_scatter_index=gen_timestep_scatter_index,
-            )
-        hidden_states = outputs[0]
+        taylor_cache_manager = getattr(self, "_taylor_cache_manager", None)
+        use_taylor_cache = taylor_cache_manager is not None and mode == "gen_image"
+
+        if not use_taylor_cache:
+            with set_forward_context(None, self.vllm_config):
+                outputs = self.model(
+                    input_ids=input_ids,
+                    attention_mask=attention_mask,
+                    position_ids=position_ids,
+                    past_key_values=past_key_values,
+                    inputs_embeds=inputs_embeds,
+                    use_cache=use_cache,
+                    output_attentions=output_attentions,
+                    output_hidden_states=output_hidden_states,
+                    return_dict=return_dict,
+                    custom_pos_emb=custom_pos_emb,
+                    mode=mode,
+                    first_step=first_step,
+                    query_lens=query_lens,
+                    seq_lens=seq_lens,
+                    num_image_tokens=num_image_tokens,
+                    gen_timestep_scatter_index=gen_timestep_scatter_index,
+                )
+            hidden_states = outputs[0]
+        else:
+            if taylor_cache_manager.should_full_compute():
+                with set_forward_context(None, self.vllm_config):
+                    outputs = self.model(
+                        input_ids=input_ids,
+                        attention_mask=attention_mask,
+                        position_ids=position_ids,
+                        past_key_values=past_key_values,
+                        inputs_embeds=inputs_embeds,
+                        use_cache=use_cache,
+                        output_attentions=output_attentions,
+                        output_hidden_states=output_hidden_states,
+                        return_dict=return_dict,
+                        custom_pos_emb=custom_pos_emb,
+                        mode=mode,
+                        first_step=first_step,
+                        query_lens=query_lens,
+                        seq_lens=seq_lens,
+                        num_image_tokens=num_image_tokens,
+                        gen_timestep_scatter_index=gen_timestep_scatter_index,
+                    )
+                hidden_states = outputs[0]
+                taylor_cache_manager.update_from_full(hidden_states, outputs.past_key_values)
+            else:
+                hidden_states, cached_past_key_values = taylor_cache_manager.forecast()
+                outputs = BaseModelOutputWithPast(
+                    last_hidden_state=hidden_states,
+                    past_key_values=cached_past_key_values,
+                    hidden_states=None,
+                    attentions=None,
+                )
+            taylor_cache_manager.maybe_finalize()
 
         if mode == "gen_text":
             hidden_states = self.model.ln_f(hidden_states)

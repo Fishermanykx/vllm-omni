@@ -226,6 +226,21 @@ class DiffusionCacheConfig:
     rel_l1_thresh: float = 0.2
     coefficients: list[float] | None = None  # Uses model-specific defaults if None
 
+    # Taylor Cache parameters [taylor_cache only]
+    # Interval for full model computation. Intermediate steps use Taylor extrapolation.
+    taylor_cache_interval: int = 4
+    # Maximum derivative order used by Taylor expansion.
+    taylor_cache_order: int = 2
+    # Fully compute the first N steps to stabilize global structure.
+    taylor_cache_enable_first_enhance: bool = False
+    taylor_cache_first_enhance_steps: int = 3
+    # Fully compute the last N steps to preserve details.
+    taylor_cache_enable_tailing_enhance: bool = False
+    taylor_cache_tailing_enhance_steps: int = 1
+    # Frequency-aware derivative orders.
+    taylor_cache_low_freqs_order: int = 0
+    taylor_cache_high_freqs_order: int = 2
+
     # cache-dit parameters [cache-dit only]
     # Default: 1 forward compute block (optimized for single-transformer models)
     # Use 1 as default instead of cache-dit's 8, optimized for single-transformer models

@@ -11,6 +11,7 @@ Cache backends are instantiated directly via their constructors and configured v
 """
 
 from vllm_omni.diffusion.cache.base import CacheBackend
+from vllm_omni.diffusion.cache.taylor_cache_backend import TaylorCacheBackend
 from vllm_omni.diffusion.cache.teacache import (
     CacheContext,
     TeaCacheConfig,
@@ -23,5 +24,6 @@ __all__ = [
     "TeaCacheConfig",
     "CacheContext",
     "TeaCacheBackend",
+    "TaylorCacheBackend",
     "apply_teacache_hook",
 ]
