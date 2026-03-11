@@ -160,6 +160,7 @@ CLAUDE.md
 # Codex
 AGENTS.md
 .codex/
+.codex_tmp_hunyuan_ref/
 
 # cursor
 .cursor/
