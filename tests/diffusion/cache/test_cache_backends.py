@@ -148,6 +148,8 @@ class TestCacheDiTBackend:
         adapter_kwargs = mock_block_adapter.call_args.kwargs
         assert adapter_kwargs["transformer"] is mock_pipeline.model
         assert adapter_kwargs["blocks"] is mock_pipeline.model.layers
+        assert adapter_kwargs["forward_pattern"] == adapter_kwargs["forward_pattern"].__class__.Pattern_3
+        assert len(adapter_kwargs["params_modifiers"]) == 1
         mock_cache_dit.enable_cache.assert_called_once()
 
         backend.refresh(mock_pipeline, num_inference_steps=12)

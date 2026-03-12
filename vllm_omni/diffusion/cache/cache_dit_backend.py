@@ -633,12 +633,22 @@ def enable_cache_for_hunyuan_image3(pipeline: Any, cache_config: Any) -> Callabl
         f"Bn={db_cache_config.Bn_compute_blocks}, "
         f"W={db_cache_config.max_warmup_steps}, "
     )
+    # Follow cache-dit forward-pattern guidance:
+    # - Pattern_2 is for blocks with both hidden and encoder streams (e.g., Wan2.2)
+    # - HunyuanImage3 decoder layers are single-stream `hidden_states` blocks
+    #   (`HunyuanImage3DecoderLayer.forward(hidden_states, ...)`), so Pattern_3
+    #   is the aligned choice.
+    modifier = ParamsModifier(
+        cache_config=db_cache_config,
+        calibrator_config=calibrator_config,
+    )
 
     cache_dit.enable_cache(
         BlockAdapter(
             transformer=transformer,
             blocks=transformer.layers,
-            forward_pattern=ForwardPattern.Pattern_2,
+            forward_pattern=ForwardPattern.Pattern_3,
+            params_modifiers=[modifier],
             check_forward_pattern=False,
         ),
         cache_config=db_cache_config,
