@@ -16,6 +16,11 @@ from vllm_omni.diffusion.data import DiffusionCacheConfig
 
 logger = init_logger(__name__)
 
+# Registry of custom Taylor Cache enablers for specific models.
+# Maps pipeline names to their Taylor Cache enablement functions.
+# Will be populated after function definitions.
+CUSTOM_TAYLOR_ENABLERS: dict[str, Callable] = {}
+
 
 def _decomposition_fft(x: torch.Tensor, cutoff_ratio: float = 0.1) -> tuple[torch.Tensor, torch.Tensor]:
     """Split hidden states into low/high frequency components on sequence axis."""
@@ -188,9 +193,12 @@ def enable_taylor_cache_for_hunyuan_image3(
     return manager
 
 
-CUSTOM_TAYLOR_ENABLERS: dict[str, Callable[[Any, TaylorCacheRuntimeConfig], HunyuanTaylorCacheManager]] = {
-    "HunyuanImage3Pipeline": enable_taylor_cache_for_hunyuan_image3,
-}
+# Register custom Taylor Cache enablers after function definitions.
+CUSTOM_TAYLOR_ENABLERS.update(
+    {
+        "HunyuanImage3Pipeline": enable_taylor_cache_for_hunyuan_image3,
+    }
+)
 
 
 class TaylorCacheBackend(CacheBackend):
