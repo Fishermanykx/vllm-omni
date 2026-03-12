@@ -634,13 +634,10 @@ def enable_cache_for_hunyuan_image3(pipeline: Any, cache_config: Any) -> Callabl
         f"W={db_cache_config.max_warmup_steps}, "
     )
 
+    # Use cache-dit's automatic adapter inference for this decoder-only stack.
+    # Forcing Pattern_0 requires encoder_hidden_states and breaks Hunyuan blocks.
     cache_dit.enable_cache(
-        BlockAdapter(
-            transformer=transformer,
-            blocks=transformer.layers,
-            # Decoder-style blocks with KV-cache outputs fit Pattern_0.
-            forward_pattern=ForwardPattern.Pattern_0,
-        ),
+        transformer,
         cache_config=db_cache_config,
         calibrator_config=calibrator_config,
     )
