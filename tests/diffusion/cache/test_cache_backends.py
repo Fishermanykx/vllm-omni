@@ -127,8 +127,9 @@ class TestCacheDiTBackend:
         """Test HunyuanImage3 custom cache-dit enabler is registered."""
         assert "HunyuanImage3Pipeline" in CUSTOM_DIT_ENABLERS
 
+    @patch("vllm_omni.diffusion.cache.cache_dit_backend.BlockAdapter")
     @patch("vllm_omni.diffusion.cache.cache_dit_backend.cache_dit")
-    def test_enable_hunyuan_pipeline_uses_model_transformer(self, mock_cache_dit):
+    def test_enable_hunyuan_pipeline_uses_model_transformer(self, mock_cache_dit, mock_block_adapter):
         """Test HunyuanImage3 custom enabler uses pipeline.model for cache enable/refresh."""
         mock_pipeline = Mock()
         mock_pipeline.__class__.__name__ = "HunyuanImage3Pipeline"
@@ -143,9 +144,11 @@ class TestCacheDiTBackend:
 
         assert backend.enabled is True
         assert backend._refresh_func is not None
+        mock_block_adapter.assert_called_once()
+        adapter_kwargs = mock_block_adapter.call_args.kwargs
+        assert adapter_kwargs["transformer"] is mock_pipeline.model
+        assert adapter_kwargs["blocks"] is mock_pipeline.model.layers
         mock_cache_dit.enable_cache.assert_called_once()
-        call_args = mock_cache_dit.enable_cache.call_args
-        assert call_args[0][0] is mock_pipeline.model
 
         backend.refresh(mock_pipeline, num_inference_steps=12)
         mock_cache_dit.refresh_context.assert_called_once()
