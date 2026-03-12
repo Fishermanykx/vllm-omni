@@ -19,7 +19,7 @@ def test_taylor_cache_backend_enable_refresh():
         pass
 
     # Use the exact class name expected by backend enable() check.
-    PipelineCls = type("HunyuanImage3Text2ImagePipeline", (), {})
+    PipelineCls = type("HunyuanImage3Pipeline", (), {})
     pipeline = PipelineCls()
     pipeline.model = _Model()
 
@@ -34,6 +34,22 @@ def test_taylor_cache_backend_enable_refresh():
     manager = pipeline._taylor_cache_manager
     assert isinstance(manager, HunyuanTaylorCacheManager)
     assert manager.num_steps == 20
+
+
+def test_taylor_cache_backend_unsupported_pipeline():
+    class _Model:
+        pass
+
+    PipelineCls = type("HunyuanImage3Text2ImagePipeline", (), {})
+    pipeline = PipelineCls()
+    pipeline.model = _Model()
+
+    backend = TaylorCacheBackend(DiffusionCacheConfig())
+    backend.enable(pipeline)
+
+    assert not backend.is_enabled()
+    assert not hasattr(pipeline, "_taylor_cache_manager")
+    assert not hasattr(pipeline.model, "_taylor_cache_manager")
 
 
 def test_taylor_cache_manager_forecast_path():

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import math
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
@@ -173,6 +174,25 @@ class HunyuanTaylorCacheManager:
             self.last_full_computation_step = 0
 
 
+def enable_taylor_cache_for_hunyuan_image3(
+    pipeline: Any,
+    runtime_config: TaylorCacheRuntimeConfig,
+) -> HunyuanTaylorCacheManager:
+    """Enable Taylor Cache for HunyuanImage3Pipeline."""
+    manager = HunyuanTaylorCacheManager(runtime_config)
+    # HunyuanImage3 runtime reads cache manager from the outer pipeline object.
+    setattr(pipeline, "_taylor_cache_manager", manager)
+    # Keep a mirrored reference on nested model for compatibility with older call sites.
+    if hasattr(pipeline, "model"):
+        setattr(pipeline.model, "_taylor_cache_manager", manager)
+    return manager
+
+
+CUSTOM_TAYLOR_ENABLERS: dict[str, Callable[[Any, TaylorCacheRuntimeConfig], HunyuanTaylorCacheManager]] = {
+    "HunyuanImage3Pipeline": enable_taylor_cache_for_hunyuan_image3,
+}
+
+
 class TaylorCacheBackend(CacheBackend):
     """Taylor Cache backend for HunyuanImage3 diffusion pipeline."""
 
@@ -193,25 +213,24 @@ class TaylorCacheBackend(CacheBackend):
         )
 
     def enable(self, pipeline: Any) -> None:
-        supported_pipelines = {"HunyuanImage3Text2ImagePipeline", "HunyuanImage3Pipeline"}
-        if pipeline.__class__.__name__ not in supported_pipelines:
+        pipeline_name = pipeline.__class__.__name__
+        enabler = CUSTOM_TAYLOR_ENABLERS.get(pipeline_name)
+
+        if enabler is None:
             logger.warning(
                 "TaylorCacheBackend currently only supports %s, got %s",
-                ", ".join(sorted(supported_pipelines)),
-                pipeline.__class__.__name__,
+                ", ".join(sorted(CUSTOM_TAYLOR_ENABLERS)),
+                pipeline_name,
             )
             self.enabled = False
+            self._manager = None
             return
 
-        self._manager = HunyuanTaylorCacheManager(self._build_runtime_config())
-        # HunyuanImage3 runtime reads cache manager from the outer pipeline object.
-        setattr(pipeline, "_taylor_cache_manager", self._manager)
-        # Keep a mirrored reference on nested model for compatibility with older call sites.
-        if hasattr(pipeline, "model"):
-            setattr(pipeline.model, "_taylor_cache_manager", self._manager)
+        self._manager = enabler(pipeline, self._build_runtime_config())
         self.enabled = True
         logger.info(
-            "Taylor Cache enabled: interval=%d order=%d first_enhance=%s tailing_enhance=%s",
+            "Taylor Cache enabled on %s: interval=%d order=%d first_enhance=%s tailing_enhance=%s",
+            pipeline_name,
             self._manager.config.interval,
             self._manager.config.order,
             self._manager.config.enable_first_enhance,
@@ -224,4 +243,3 @@ class TaylorCacheBackend(CacheBackend):
         self._manager.reset(num_steps=num_inference_steps)
         if verbose:
             logger.debug("Taylor Cache state refreshed (num_inference_steps=%d)", num_inference_steps)
-
