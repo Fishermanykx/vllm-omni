@@ -1618,6 +1618,7 @@ class HunyuanImage3DecoderLayer(nn.Module):
     def forward(
         self,
         hidden_states: torch.Tensor,
+        encoder_hidden_states: torch.Tensor | None = None,
         attention_mask: torch.Tensor | None = None,
         position_ids: torch.LongTensor | None = None,
         past_key_value: tuple[torch.Tensor] | None = None,
@@ -2036,6 +2037,9 @@ class HunyuanImage3Model(nn.Module):
             layer_outputs = decoder_layer(
                 positions=None,
                 hidden_states=hidden_states,
+                # cache-dit wrapped blocks require this argument in their generic
+                # forward signature; Hunyuan does not use a separate encoder stream.
+                encoder_hidden_states=None,
                 attention_mask=attention_mask,
                 position_ids=position_ids,
                 past_key_value=past_key_values,
