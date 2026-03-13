@@ -623,8 +623,7 @@ def enable_cache_for_hunyuan_image3(pipeline: Any, cache_config: Any) -> Callabl
     transformer = getattr(pipeline, "model", None)
     if transformer is None or not hasattr(transformer, "layers"):
         raise ValueError(
-            "HunyuanImage3 cache-dit enabler expects pipeline.model.layers, "
-            f"got pipeline={pipeline.__class__.__name__}"
+            "HunyuanImage3 cache-dit enabler expects pipeline.model.layers, got pipeline={pipeline.__class__.__name__}"
         )
 
     logger.info(
