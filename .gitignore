@@ -166,7 +166,9 @@ AGENTS.md
 .cursor/
 
 # scripts
-/scripts/
+/scripts/*
+!/scripts/monitor_gpu_peak.py
+!/scripts/monitor_npu_peak.py
 
 # PyCharm
 #  JetBrains specific template is maintained in a separate JetBrains.gitignore that can
