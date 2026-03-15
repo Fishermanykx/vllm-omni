@@ -5,8 +5,8 @@ import copy
 import time
 import weakref
 from collections.abc import AsyncGenerator, Callable, Iterable, Sequence
-from typing import Any, TypeVar
 from dataclasses import asdict
+from typing import Any, TypeVar
 
 from vllm.config import VllmConfig
 from vllm.inputs.preprocess import InputPreprocessor
