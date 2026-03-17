@@ -2,7 +2,6 @@
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 
 import argparse
-import os
 import time
 from pathlib import Path
 from typing import Any
@@ -218,6 +217,12 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="[NextStep-1.1 only] Apply layer normalization to sampled tokens.",
     )
+    parser.add_argument(
+        "--profiler-dir",
+        type=str,
+        default=None,
+        help="Enables profiling when set.",
+    )
     return parser.parse_args()
 
 
@@ -266,8 +271,15 @@ def main():
         enable_expert_parallel=args.enable_expert_parallel,
     )
 
-    # Check if profiling is requested via environment variable
-    profiler_enabled = bool(os.getenv("VLLM_TORCH_PROFILER_DIR"))
+    # Build profiler config from CLI arg
+    profiler_config = None
+    if args.profiler_dir:
+        profiler_config = {
+            "profiler": "torch",
+            "torch_profiler_dir": args.profiler_dir,
+        }
+
+    profiler_enabled = args.profiler_dir is not None
 
     # Prepare LoRA kwargs for Omni initialization
     lora_args: dict[str, Any] = {}
@@ -305,6 +317,7 @@ def main():
         "parallel_config": parallel_config,
         "enforce_eager": args.enforce_eager,
         "enable_cpu_offload": args.enable_cpu_offload,
+        "profiler_config": profiler_config,
         **lora_args,
         **quant_kwargs,
     }

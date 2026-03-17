@@ -1,6 +1,8 @@
 # adapted from sglang and fastvideo
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
+from __future__ import annotations
+
 import enum
 import os
 import random
@@ -21,6 +23,8 @@ from vllm_omni.diffusion.quantization import (
 from vllm_omni.diffusion.utils.network_utils import is_port_available
 
 if TYPE_CHECKING:
+    from vllm.config import ProfilerConfig
+
     from vllm_omni.diffusion.quantization import DiffusionQuantizationConfig
 
 # Import after TYPE_CHECKING to avoid circular imports at runtime
@@ -156,7 +160,7 @@ class DiffusionParallelConfig:
             self.world_size = other_parallel_world_size
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "DiffusionParallelConfig":
+    def from_dict(cls, data: dict[str, Any]) -> DiffusionParallelConfig:
         """
         Create DiffusionParallelConfig from a dictionary.
 
@@ -178,7 +182,7 @@ class TransformerConfig:
     params: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "TransformerConfig":
+    def from_dict(cls, data: dict[str, Any]) -> TransformerConfig:
         if not isinstance(data, dict):
             raise TypeError(f"Expected transformer config dict, got {type(data)!r}")
         return cls(params=dict(data))
@@ -269,7 +273,7 @@ class DiffusionCacheConfig:
     _extra_params: dict[str, Any] = field(default_factory=dict, repr=False)
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "DiffusionCacheConfig":
+    def from_dict(cls, data: dict[str, Any]) -> DiffusionCacheConfig:
         """
         Create DiffusionCacheConfig from a dictionary.
 
@@ -453,13 +457,15 @@ class OmniDiffusionConfig:
     # Omni configuration (injected from stage config)
     omni_kv_config: dict[str, Any] = field(default_factory=dict)
 
+    profiler_config: ProfilerConfig | dict[str, Any] | None = None
+
     # Model-specific function for collecting CFG KV caches (set at runtime)
     cfg_kv_collect_func: Any | None = None
 
     # Quantization settings
     # Supported methods: "fp8" (FP8 W8A8 on Ada/Hopper, weight-only on older GPUs)
     quantization: str | None = None
-    quantization_config: "DiffusionQuantizationConfig | dict[str, Any] | None" = None
+    quantization_config: DiffusionQuantizationConfig | dict[str, Any] | None = None
 
     @property
     def is_moe(self) -> bool:
@@ -559,6 +565,11 @@ class OmniDiffusionConfig:
             # If it's neither dict nor DiffusionCacheConfig, convert to empty config
             self.cache_config = DiffusionCacheConfig()
 
+        if isinstance(self.profiler_config, dict):
+            from vllm.config import ProfilerConfig
+
+            self.profiler_config = ProfilerConfig(**self.profiler_config)
+
         # Convert quantization config (deferred import to avoid circular imports)
         if self.quantization is not None or self.quantization_config is not None:
             from vllm_omni.diffusion.quantization import (
@@ -599,7 +610,7 @@ class OmniDiffusionConfig:
         self.supports_multimodal_inputs = self.model_class_name in {"QwenImageEditPlusPipeline"}
 
     @classmethod
-    def from_kwargs(cls, **kwargs: Any) -> "OmniDiffusionConfig":
+    def from_kwargs(cls, **kwargs: Any) -> OmniDiffusionConfig:
         # Backwards-compatibility: older callers may use a diffusion-specific
         # "static_lora_scale" kwarg. Normalize it to the canonical "lora_scale"
         # before constructing the dataclass to avoid TypeError on unknown fields.

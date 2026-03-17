@@ -352,9 +352,9 @@ def main(args):
         for i, prompt in enumerate(prompts):
             prompt["modalities"] = output_modalities
 
-    profiler_enabled = bool(os.getenv("VLLM_TORCH_PROFILER_DIR"))
+    profiler_enabled = args.profiler_dir is not None
     if profiler_enabled:
-        omni_llm.start_profile(stages=[0])
+        omni_llm.start_profile(stages=args.profiler_stages)
     omni_generator = omni_llm.generate(prompts, sampling_params_list, py_generator=args.py_generator)
     # Determine output directory: prefer --output-dir; fallback to --output-wav
     output_dir = args.output_dir if getattr(args, "output_dir", None) else args.output_wav
@@ -405,7 +405,7 @@ def main(args):
         if profiler_enabled and processed_count >= total_requests:
             print(f"[Info] Processed {processed_count}/{total_requests}. Stopping profiler inside active loop...")
             # Stop the profiler while workers are still alive
-            omni_llm.stop_profile()
+            omni_llm.stop_profile(stages=args.profiler_stages)
 
             print("[Info] Waiting 30s for workers to write trace files to disk...")
             time.sleep(30)
@@ -526,6 +526,19 @@ def parse_args():
         action="store_true",
         default=False,
         help="Use py_generator mode. The returned type of Omni.generate() is a Python Generator object.",
+    )
+    parser.add_argument(
+        "--profiler-dir",
+        type=str,
+        default=None,
+        help="Enables profiling when set.",
+    )
+    parser.add_argument(
+        "--profiler-stages",
+        type=int,
+        nargs="+",
+        default=None,
+        help="Stage IDs to profile (e.g. --profiler-stages 0 1 2). If not set, profiles all stages.",
     )
 
     return parser.parse_args()

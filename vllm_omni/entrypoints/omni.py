@@ -242,6 +242,11 @@ class OmniBase:
             if not isinstance(kwargs["dtype"], torch.dtype):
                 raise TypeError(f"Provided dtype must be a string or torch.dtype, got {type(kwargs['dtype']).__name__}")
             kwargs["dtype"] = str(kwargs["dtype"]).removeprefix("torch.")
+        # Convert ProfilerConfig dataclass to dict for OmegaConf compatibility
+        if "profiler_config" in kwargs and hasattr(kwargs["profiler_config"], "__dataclass_fields__"):
+            from dataclasses import asdict
+
+            kwargs["profiler_config"] = asdict(kwargs["profiler_config"])
 
         # Normalize cache config before passing to factory
         cache_backend = kwargs.get("cache_backend", "none")
@@ -298,6 +303,15 @@ class OmniBase:
                         or cfg.engine_args.quantization_config is None
                     ):
                         cfg.engine_args.quantization_config = quantization_config
+                profiler_config = kwargs.get("profiler_config")
+                if profiler_config is not None:
+                    if not hasattr(cfg.engine_args, "profiler_config") or cfg.engine_args.profiler_config is None:
+                        # Convert ProfilerConfig dataclass to dict for OmegaConf compatibility
+                        if hasattr(profiler_config, "__dataclass_fields__"):
+                            from dataclasses import asdict
+
+                            profiler_config = asdict(profiler_config)
+                        cfg.engine_args.profiler_config = profiler_config
             except Exception as e:
                 logger.warning("Failed to inject LoRA config for stage: %s", e)
 
@@ -426,6 +440,8 @@ class OmniBase:
             **engine_args,
         )
         self._inline_diffusion = True
+        # Give the stage a reference so submit/stop_profile work without queues
+        self.stage_list[stage_id]._inline_engine = self._inline_engine
 
         # These attributes are normally set by AsyncOmni._wait_for_stages_ready
         # but we skip that for inline mode. Set them to None since there is no
@@ -578,12 +594,8 @@ class OmniBase:
         logger.warning(f"[{self._name}] Stage initialization timeout. Troubleshooting Steps:\n{formatted_suggestions}")
 
     def _is_profiler_enabled(self, stage_id: int) -> bool:
-        """Check if profiler config is set for a given stage."""
+        """Check if profiler config is set for a given stage via engine_args in YAML."""
         stage = self.stage_list[stage_id]
-        # For diffusion stages, profiling is controlled by VLLM_TORCH_PROFILER_DIR env var
-        if stage.stage_type == "diffusion":
-            return True
-        # For LLM stages, check if profiler_config is set in engine_args
         engine_args = getattr(stage.stage_config, "engine_args", None)
         if engine_args is None:
             return False
@@ -707,9 +719,6 @@ class OmniBase:
     def start_profile(self, stages: list[int] | None = None) -> None:
         """Start profiling for specified stages.
 
-        Sends start_profile command to stage workers. Profiling must be enabled
-        via VLLM_TORCH_PROFILER_DIR environment variable.
-
         Args:
             stages: List of stage IDs to start profiling. If None, starts
                 profiling for all stages that have profiling enabled.
@@ -804,13 +813,11 @@ class OmniBase:
                     else:
                         logger.warning(f"[{self._name}] Stage-{stage_id} returned non-dict data: {type(stage_data)}")
                 else:
-                    # Fallback for non-diffusion stages
                     logger.warning(
-                        "[%s] Stage-%s does not support synchronous stop_profile. Falling back to async.",
+                        "[%s] Stage-%s does not have stop_profile method.",
                         self._name,
                         stage_id,
                     )
-                    stage.submit({"type": OmniStageTaskType.PROFILER_STOP})
 
         # Final debug output
         logger.info(

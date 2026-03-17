@@ -325,6 +325,12 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Enable layerwise (blockwise) offloading on DiT modules.",
     )
+    parser.add_argument(
+        "--profiler-dir",
+        type=str,
+        default=None,
+        help="Enables profiling when set.",
+    )
     return parser.parse_args()
 
 
@@ -378,6 +384,14 @@ def main():
             # Note: coefficients will use model-specific defaults based on model_type
         }
 
+    # Build profiler config from CLI arg
+    profiler_config = None
+    if args.profiler_dir:
+        profiler_config = {
+            "profiler": "torch",
+            "torch_profiler_dir": args.profiler_dir,
+        }
+
     # Initialize Omni with appropriate pipeline
     omni = Omni(
         model=args.model,
@@ -389,11 +403,11 @@ def main():
         parallel_config=parallel_config,
         enforce_eager=args.enforce_eager,
         enable_cpu_offload=args.enable_cpu_offload,
+        profiler_config=profiler_config,
     )
     print("Pipeline loaded")
 
-    # Check if profiling is requested via environment variable
-    profiler_enabled = bool(os.getenv("VLLM_TORCH_PROFILER_DIR"))
+    profiler_enabled = args.profiler_dir is not None
 
     # Time profiling for generation
     print(f"\n{'=' * 60}")

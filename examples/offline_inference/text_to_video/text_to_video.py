@@ -2,7 +2,6 @@
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 
 import argparse
-import os
 import time
 from pathlib import Path
 
@@ -116,6 +115,12 @@ def parse_args() -> argparse.Namespace:
         help="Number of GPUs used for tensor parallelism (TP) inside the DiT.",
     )
     parser.add_argument(
+        "--profiler-dir",
+        type=str,
+        default=None,
+        help="Enables profiling when set.",
+    )
+    parser.add_argument(
         "--audio-sample-rate",
         type=int,
         default=24000,
@@ -168,8 +173,15 @@ def main():
         enable_expert_parallel=args.enable_expert_parallel,
     )
 
-    # Check if profiling is requested via environment variable
-    profiler_enabled = bool(os.getenv("VLLM_TORCH_PROFILER_DIR"))
+    # Build profiler config from CLI arg
+    profiler_config = None
+    if args.profiler_dir:
+        profiler_config = {
+            "profiler": "torch",
+            "torch_profiler_dir": args.profiler_dir,
+        }
+
+    profiler_enabled = args.profiler_dir is not None
 
     omni = Omni(
         model=args.model,
@@ -182,6 +194,7 @@ def main():
         enable_cpu_offload=args.enable_cpu_offload,
         parallel_config=parallel_config,
         enforce_eager=args.enforce_eager,
+        profiler_config=profiler_config,
         cache_backend=args.cache_backend,
         cache_config=cache_config,
     )

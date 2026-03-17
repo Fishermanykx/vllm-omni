@@ -27,7 +27,6 @@ Usage:
 """
 
 import argparse
-import os
 import time
 from pathlib import Path
 
@@ -137,6 +136,12 @@ def parse_args() -> argparse.Namespace:
         help="Disable torch.compile and force eager execution.",
     )
     parser.add_argument(
+        "--profiler-dir",
+        type=str,
+        default=None,
+        help="Enables profiling when set.",
+    )
+    parser.add_argument(
         "--audio-sample-rate",
         type=int,
         default=24000,
@@ -225,6 +230,15 @@ def main():
     # Resize image to target dimensions
     image = image.resize((width, height), PIL.Image.Resampling.LANCZOS)
 
+    # Build profiler config from CLI arg
+    profiler_config = None
+    if args.profiler_dir:
+        profiler_config = {
+            "profiler": "torch",
+            "torch_profiler_dir": args.profiler_dir,
+        }
+
+    profiler_enabled = args.profiler_dir is not None
     # Configure cache based on backend type
     cache_config = None
     if args.cache_backend == "cache_dit":
@@ -256,8 +270,6 @@ def main():
             "rel_l1_thresh": 0.2,
         }
 
-    # Check if profiling is requested via environment variable
-    profiler_enabled = bool(os.getenv("VLLM_TORCH_PROFILER_DIR"))
     parallel_config = DiffusionParallelConfig(
         ulysses_degree=args.ulysses_degree,
         ring_degree=args.ring_degree,
@@ -278,11 +290,10 @@ def main():
         enable_cpu_offload=args.enable_cpu_offload,
         parallel_config=parallel_config,
         enforce_eager=args.enforce_eager,
+        profiler_config=profiler_config,
         model_class_name=model_class_name,
-        cache_backend=args.cache_backend,
         cache_config=cache_config,
     )
-
     if profiler_enabled:
         print("[Profiler] Starting profiling...")
         omni.start_profile()

@@ -5,6 +5,7 @@ import copy
 import time
 import weakref
 from collections.abc import AsyncGenerator, Callable, Iterable, Sequence
+from dataclasses import asdict
 from typing import Any, TypeVar
 
 from vllm.config import VllmConfig
@@ -230,6 +231,15 @@ class AsyncOmni(OmniBase):
                     "enable_sleep_mode": kwargs.get("enable_sleep_mode", False),
                     "enable_multithread_weight_load": kwargs.get("enable_multithread_weight_load", True),
                     "num_weight_load_threads": kwargs.get("num_weight_load_threads", 4),
+                    **(
+                        {
+                            "profiler_config": asdict(kwargs["profiler_config"])
+                            if hasattr(kwargs["profiler_config"], "__dataclass_fields__")
+                            else kwargs["profiler_config"]
+                        }
+                        if kwargs.get("profiler_config") is not None
+                        else {}
+                    ),
                 },
                 "final_output": True,
                 "final_output_type": "image",
