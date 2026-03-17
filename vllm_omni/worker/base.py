@@ -11,7 +11,6 @@ from vllm.utils.mem_utils import format_gib, memory_profiling
 from vllm.v1.worker.gpu_worker import Worker as GPUWorker
 
 from vllm_omni.entrypoints.utils import detect_pid_host
-from vllm_omni.profiler import OmniTorchProfilerWrapper, create_omni_profiler
 from vllm_omni.worker.gpu_memory_utils import (
     get_process_gpu_memory,
     is_process_scoped_memory_available,
@@ -37,8 +36,10 @@ class OmniGPUWorkerBase(GPUWorker):
         # Replace vLLM's profiler with OmniTorchProfilerWrapper
         profiler_config = self.vllm_config.profiler_config
         if profiler_config.profiler == "torch":
+            from vllm_omni.profiler import OmniTorchProfilerWrapper
+
             worker_name = f"stage-rank-{self.rank}"
-            self.profiler = create_omni_profiler(
+            self.profiler = OmniTorchProfilerWrapper(
                 profiler_config=profiler_config,
                 worker_name=worker_name,
                 local_rank=self.local_rank,
@@ -53,6 +54,8 @@ class OmniGPUWorkerBase(GPUWorker):
         if self.profiler is None:
             raise RuntimeError("Profiling is not enabled. Please set --profiler-config to enable profiling.")
         if is_start:
+            from vllm_omni.profiler import OmniTorchProfilerWrapper
+
             if isinstance(self.profiler, OmniTorchProfilerWrapper):
                 filename = f"stage_llm_{int(time.time())}"
                 self.profiler.set_trace_filename(filename)
