@@ -46,6 +46,38 @@ def _init_mc2_group_for_diffusion(
     )
 
 
+def _init_dynamic_eplb_group_for_diffusion(
+    world_size: int,
+    data_parallel_size: int,
+    tensor_parallel_size: int,
+    backend: str,
+    local_rank: int,
+) -> None:
+    import vllm_ascend.distributed.parallel_state as vllm_ascend_parallel_state
+
+    try:
+        from vllm_ascend.ascend_config import get_ascend_config
+
+        if not get_ascend_config().eplb_config.dynamic_eplb:
+            return
+    except Exception:
+        return
+
+    if getattr(vllm_ascend_parallel_state, "_DYNAMIC_EPLB", None) is not None:
+        return
+
+    all_ranks = torch.arange(world_size).reshape(-1, data_parallel_size * tensor_parallel_size)
+    group_ranks = all_ranks.unbind(0)
+    group_ranks = [x.tolist() for x in group_ranks]
+
+    vllm_ascend_parallel_state._DYNAMIC_EPLB = vllm_init_model_parallel_group(
+        group_ranks,
+        local_rank,
+        backend,
+        group_name="dynamic_eplb",
+    )
+
+
 def _select_moe_comm_method(vllm_config: VllmConfig) -> MoECommType | None:
     soc_version = get_ascend_device_type()
     if not vllm_config.parallel_config.enable_expert_parallel or get_ep_group().world_size == 1:
@@ -70,6 +102,13 @@ def prepare_hunyuan_fused_moe_runtime() -> None:
     backend = torch.distributed.get_backend(get_world_group().device_group)
     local_rank = get_world_group().local_rank
     _init_mc2_group_for_diffusion(
+        world_size=world_size,
+        data_parallel_size=data_parallel_size,
+        tensor_parallel_size=tensor_parallel_size,
+        backend=backend,
+        local_rank=local_rank,
+    )
+    _init_dynamic_eplb_group_for_diffusion(
         world_size=world_size,
         data_parallel_size=data_parallel_size,
         tensor_parallel_size=tensor_parallel_size,
@@ -106,3 +145,6 @@ class AscendHunyuanFusedMoE(AscendSharedFusedMoE):
         if vllm_ascend_parallel_state._MC2:
             vllm_ascend_parallel_state._MC2.destroy()
         vllm_ascend_parallel_state._MC2 = None
+        if getattr(vllm_ascend_parallel_state, "_DYNAMIC_EPLB", None):
+            vllm_ascend_parallel_state._DYNAMIC_EPLB.destroy()
+        vllm_ascend_parallel_state._DYNAMIC_EPLB = None

@@ -77,7 +77,8 @@ class HunyuanImage3Pipeline(HunyuanImage3PreTrainedModel, GenerationMixin):
                 fall_back_to_pt=True,
             )
         ]
-        self.model = HunyuanImage3Model(self.hf_config)
+        self.model = HunyuanImage3Model(self.hf_config, od_config=od_config)
+        self.quant_config = self.model.quant_config
         self.vae = AutoencoderKLConv3D.from_config(self.hf_config.vae)
         self._pipeline = None
         self._tkwrapper = TokenizerWrapper(od_config.model)

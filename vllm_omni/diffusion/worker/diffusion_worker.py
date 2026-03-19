@@ -561,9 +561,19 @@ class WorkerWrapperBase:
 
         # If custom_pipeline_args is provided, use CustomPipelineWorkerExtension
         if self.custom_pipeline_args is not None:
-            # Set worker_extension_cls to CustomPipelineWorkerExtension if not already set
             if self.worker_extension_cls is None:
                 self.worker_extension_cls = CustomPipelineWorkerExtension
+            else:
+                if isinstance(self.worker_extension_cls, str):
+                    extension_cls = resolve_obj_by_qualname(self.worker_extension_cls)
+                else:
+                    extension_cls = self.worker_extension_cls
+
+                if CustomPipelineWorkerExtension not in extension_cls.__mro__:
+                    class_name = f"{extension_cls.__name__}With{CustomPipelineWorkerExtension.__name__}"
+                    extension_cls = type(class_name, (extension_cls, CustomPipelineWorkerExtension), {})
+
+                self.worker_extension_cls = extension_cls
 
         if self.worker_extension_cls:
             if isinstance(self.worker_extension_cls, str):

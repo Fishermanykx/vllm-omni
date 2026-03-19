@@ -409,6 +409,11 @@ class OmniDiffusionConfig:
     # Worker extension class for custom functionality
     worker_extension_cls: str | None = None
 
+    # Optional expert parallel load balancing configuration.
+    # When provided, diffusion workers can opt into EPLB support
+    # through a generic worker extension.
+    eplb_config: dict[str, Any] | None = None
+
     # Custom pipeline arguments for custom pipelines
     custom_pipeline_args: dict[str, Any] | None = None
 
@@ -473,6 +478,23 @@ class OmniDiffusionConfig:
             return any(isinstance(n, int) and n > 0 for n in num_experts)
 
         return False
+
+    @property
+    def normalized_eplb_config(self) -> dict[str, Any]:
+        cfg = self.eplb_config
+        if isinstance(cfg, Mapping):
+            return dict(cfg)
+        return {}
+
+    @property
+    def eplb_requested(self) -> bool:
+        cfg = self.normalized_eplb_config
+        return bool(cfg.get("dynamic_eplb") or cfg.get("expert_map_path") or cfg.get("expert_map_record_path"))
+
+    @property
+    def uses_dynamic_eplb(self) -> bool:
+        cfg = self.normalized_eplb_config
+        return bool(cfg.get("dynamic_eplb") or cfg.get("expert_map_record_path"))
 
     def settle_port(self, port: int, port_inc: int = 42, max_attempts: int = 100) -> int:
         """
@@ -594,6 +616,9 @@ class OmniDiffusionConfig:
             self.max_cpu_loras = 1
         elif self.max_cpu_loras < 1:
             raise ValueError("max_cpu_loras must be >= 1 for diffusion LoRA")
+
+        if self.eplb_requested and self.worker_extension_cls is None:
+            self.worker_extension_cls = "vllm_omni.diffusion.worker.eplb_worker_extension.EplbWorkerExtension"
 
     def update_multimodal_support(self) -> None:
         self.supports_multimodal_inputs = self.model_class_name in {"QwenImageEditPlusPipeline"}

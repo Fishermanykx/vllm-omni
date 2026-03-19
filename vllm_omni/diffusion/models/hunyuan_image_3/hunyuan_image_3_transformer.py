@@ -4,7 +4,7 @@
 import inspect
 import logging
 import math
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from typing import Any, cast
 
@@ -64,6 +64,52 @@ from vllm_omni.diffusion.layers.rope import RotaryEmbedding
 from vllm_omni.diffusion.models.hunyuan_image_3.hunyuan_fused_moe import HunyuanFusedMoE
 
 logger = logging.getLogger(__name__)
+
+
+def _get_num_experts_for_layer(config: PretrainedConfig, layer_id: int) -> int:
+    num_experts = getattr(config, "num_experts", 0)
+    if isinstance(num_experts, list):
+        return num_experts[layer_id]
+    return num_experts
+
+
+def _get_hunyuan_eplb_settings(
+    config: PretrainedConfig,
+    od_config: Any | None,
+    layer_id: int = -1,
+) -> tuple[bool, int]:
+    if od_config is None:
+        return False, 0
+
+    from vllm_omni.platforms import current_omni_platform
+
+    if current_omni_platform.device_type != "npu":
+        return False, 0
+
+    raw_cfg = getattr(od_config, "eplb_config", None)
+    if not isinstance(raw_cfg, Mapping):
+        return False, 0
+
+    enable_eplb = bool(raw_cfg.get("dynamic_eplb") or raw_cfg.get("expert_map_path") or raw_cfg.get("expert_map_record_path"))
+    if not enable_eplb:
+        return False, 0
+
+    n_redundant = int(raw_cfg.get("num_redundant_experts", 0) or 0)
+    expert_map_path = raw_cfg.get("expert_map_path")
+    if expert_map_path:
+        try:
+            from vllm_ascend.eplb.core.eplb_utils import expert_file_to_tensor
+
+            moe_layer_num_skipped = getattr(config, "moe_layer_num_skipped", 0)
+            moe_layer_id = 0 if layer_id < 0 else max(0, layer_id - moe_layer_num_skipped)
+            _, physical_count = expert_file_to_tensor(expert_map_path, moe_layer_id)
+            if physical_count is not None:
+                n_experts = _get_num_experts_for_layer(config, max(layer_id, 0))
+                n_redundant = max(int(physical_count) - int(n_experts), 0)
+        except Exception as exc:
+            logger.warning("Failed to infer redundant experts from expert map %s: %s", expert_map_path, exc)
+
+    return True, n_redundant
 
 
 def _is_moe(config: PretrainedConfig) -> bool:
@@ -1329,6 +1375,7 @@ class HunYuanSparseMoeBlock(nn.Module):
         layer_id: int = -1,
         prefix: str = "",
         enable_eplb: bool = False,
+        od_config: Any | None = None,
     ):
         super().__init__()
         self.tp_size = get_tensor_model_parallel_world_size()
@@ -1356,9 +1403,8 @@ class HunYuanSparseMoeBlock(nn.Module):
                 else config.moe_intermediate_size[layer_id]
             )
 
-        self.enable_eplb = False
+        self.enable_eplb, self.n_redundant_experts = _get_hunyuan_eplb_settings(config, od_config, layer_id)
         self.n_logical_experts = self.n_routed_experts
-        self.n_redundant_experts = 0
 
         self.gate = ReplicatedLinear(
             config.hidden_size,
@@ -1565,7 +1611,7 @@ class HunYuanAttention(nn.Module):
 
 
 class HunyuanImage3DecoderLayer(nn.Module):
-    def __init__(self, config: HunyuanImage3Config, layer_idx: int, prefix: str = ""):
+    def __init__(self, config: HunyuanImage3Config, layer_idx: int, prefix: str = "", od_config: Any | None = None):
         super().__init__()
         self.hidden_size = config.hidden_size
         self.layer_idx = layer_idx
@@ -1607,7 +1653,7 @@ class HunyuanImage3DecoderLayer(nn.Module):
             (isinstance(config.num_experts, int) and config.num_experts > 1)
             or (isinstance(config.num_experts, list) and max(config.num_experts) > 1)
         ) and layer_idx >= config.moe_layer_num_skipped:
-            self.mlp = HunYuanSparseMoeBlock(config, layer_id=layer_idx, prefix=f"{prefix}.mlp")
+            self.mlp = HunYuanSparseMoeBlock(config, layer_id=layer_idx, prefix=f"{prefix}.mlp", od_config=od_config)
         else:
             self.mlp = HunYuanMLP(self.hidden_size, self.intermediate_size, config.hidden_act)
 
@@ -1704,11 +1750,15 @@ class HunyuanImage3PreTrainedModel(PreTrainedModel):
 
 
 class HunyuanImage3Model(nn.Module):
-    def __init__(self, config: HunyuanImage3Config, prefix: str = ""):
+    def __init__(self, config: HunyuanImage3Config, od_config: Any | None = None, prefix: str = ""):
         super().__init__()
         quant_config = None
         lora_config = None
-        self.num_redundant_experts = 0
+        self.enable_eplb, self.num_redundant_experts = _get_hunyuan_eplb_settings(
+            config,
+            od_config,
+            getattr(config, "moe_layer_num_skipped", 0),
+        )
         self.config = config
         self.device = get_local_device()
         self.quant_config = quant_config
@@ -1732,6 +1782,7 @@ class HunyuanImage3Model(nn.Module):
                 config=config,
                 layer_idx=int(prefix.split(".")[-1]),
                 prefix=prefix,
+                od_config=od_config,
             ),
             prefix=f"{prefix}.layers",
         )

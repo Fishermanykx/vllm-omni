@@ -80,6 +80,7 @@ class MultiprocDiffusionExecutor(DiffusionExecutor):
         # Extract worker_extension_cls and custom_pipeline_args from od_config
         worker_extension_cls = od_config.worker_extension_cls
         custom_pipeline_args = getattr(od_config, "custom_pipeline_args", None)
+        worker_daemon = not getattr(od_config, "uses_dynamic_eplb", False)
 
         # Launch all worker processes
         scheduler_pipe_readers = []
@@ -99,7 +100,7 @@ class MultiprocDiffusionExecutor(DiffusionExecutor):
                     custom_pipeline_args,
                 ),
                 name=f"DiffusionWorker-{i}",
-                daemon=True,
+                daemon=worker_daemon,
             )
             scheduler_pipe_readers.append(reader)
             process.start()

@@ -22,6 +22,7 @@ from vllm_omni.diffusion.worker.diffusion_worker import (
     DiffusionWorker,
     WorkerWrapperBase,
 )
+from vllm_omni.diffusion.worker.eplb_worker_extension import EplbWorkerExtension
 
 pytestmark = [pytest.mark.core_model, pytest.mark.diffusion, pytest.mark.cpu]
 
@@ -151,6 +152,18 @@ class TestWorkerWrapperBaseExtension:
         )
 
         assert hasattr(wrapper.worker.__class__, "custom_method")
+
+    def test_prepare_worker_class_with_eplb_extension(self, mocker: MockerFixture, mock_od_config):
+        """EPLB extension should also be composable through the generic wrapper."""
+        mocker.patch.object(DiffusionWorker, "__init__", return_value=None)
+        wrapper = WorkerWrapperBase(
+            gpu_id=0,
+            od_config=mock_od_config,
+            base_worker_class=DiffusionWorker,
+            worker_extension_cls=EplbWorkerExtension,
+        )
+
+        assert EplbWorkerExtension in wrapper.worker.__class__.__bases__
 
 
 # -------------------------------------------------------------------------
@@ -507,6 +520,22 @@ class TestCustomPipelineWorkerExtension:
         # Should still have the explicitly provided extension
         assert CustomExtension in wrapper.worker.__class__.__bases__
         assert hasattr(wrapper.worker, "custom_extension_method")
+
+    def test_custom_pipeline_is_composed_with_eplb_extension(self, mocker: MockerFixture, mock_od_config):
+        """Custom pipeline support should compose with other generic worker extensions."""
+        custom_args = {"pipeline_class": "tests.diffusion.test_worker_wrapper_base.MockCustomPipeline"}
+
+        mocker.patch.object(DiffusionWorker, "__init__", return_value=None)
+        wrapper = WorkerWrapperBase(
+            gpu_id=0,
+            od_config=mock_od_config,
+            base_worker_class=DiffusionWorker,
+            worker_extension_cls=EplbWorkerExtension,
+            custom_pipeline_args=custom_args,
+        )
+
+        assert EplbWorkerExtension in wrapper.worker.__class__.__bases__
+        assert hasattr(wrapper.worker, "re_init_pipeline")
 
     def test_re_init_pipeline_multiple_calls(self, mocker: MockerFixture, mock_od_config):
         """Test calling re_init_pipeline multiple times."""

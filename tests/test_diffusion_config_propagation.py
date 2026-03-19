@@ -106,3 +106,10 @@ class TestCreateDefaultDiffusion:
         ea = stages[0]["engine_args"]
         assert ea["enforce_eager"] is True
         assert ea["lora_path"] == "/tmp/lora"
+
+    def test_eplb_config_roundtrip_enables_worker_extension(self):
+        eplb_config = {"dynamic_eplb": True, "num_redundant_experts": 2}
+        od = _roundtrip_diffusion_config(model="x", eplb_config=eplb_config)
+        assert od.eplb_config == eplb_config
+        assert od.uses_dynamic_eplb is True
+        assert od.worker_extension_cls == "vllm_omni.diffusion.worker.eplb_worker_extension.EplbWorkerExtension"
