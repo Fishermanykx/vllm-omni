@@ -64,7 +64,7 @@ Key arguments:
 - `--output`: Path to save the generated video.
 - `--vae-use-slicing`: Enable VAE slicing for memory optimization.
 - `--vae-use-tiling`: Enable VAE tiling for memory optimization.
-- `--cfg-parallel-size`: set it to 2 to enable CFG Parallel. See more examples in [`user_guide`](../../../docs/user_guide/diffusion/parallelism_acceleration.md#cfg-parallel).
+- `--cfg-parallel-size`: set it to 2 to enable CFG Parallel. See more examples in [`user_guide`](https://github.com/vllm-project/vllm-omni/tree/main/docs/user_guide/diffusion/parallelism_acceleration.md#cfg-parallel).
 - `--tensor-parallel-size`: tensor parallel size (effective for models that support TP, e.g. LTX2).
 - `--enable-cpu-offload`: enable CPU offloading for diffusion models.
 - `--use-hsdp`: Enable Hybrid Sharded Data Parallel to shard model weights across GPUs.
@@ -74,3 +74,78 @@ Key arguments:
 
 
 > ℹ️ If you encounter OOM errors, try using `--vae-use-slicing` and `--vae-use-tiling` to reduce memory usage.
+
+## Wan2.2 I2V + LightX2V (Offline Conversion)
+
+If you want to run Wan2.2 I2V through a LightX2V-converted Diffusers directory in vLLM-Omni,
+use the offline conversion route below.
+
+### Required assets
+
+- Base model: `Wan-AI/Wan2.2-I2V-A14B`
+- Diffusers skeleton: `Wan-AI/Wan2.2-I2V-A14B-Diffusers`
+- LoRA weights: `lightx2v/Wan2.2-Distill-Loras`
+- LightX2V converter: `tools/convert/converter.py`
+
+### Step 1: Convert high/low noise DiT weights
+
+```bash
+python converter.py \
+  --source /path/to/Wan2.2-I2V-A14B/high_noise_model \
+  --output /tmp/wan22_lightx2v/high_noise_out \
+  --output_ext .safetensors \
+  --output_name diffusion_pytorch_model \
+  --model_type wan_dit \
+  --direction forward \
+  --lora_path /path/to/wan2.2_i2v_A14b_high_noise_lora_rank64_lightx2v_4step_1022.safetensors \
+  --lora_key_convert auto \
+  --single_file
+
+python converter.py \
+  --source /path/to/Wan2.2-I2V-A14B/low_noise_model \
+  --output /tmp/wan22_lightx2v/low_noise_out \
+  --output_ext .safetensors \
+  --output_name diffusion_pytorch_model \
+  --model_type wan_dit \
+  --direction forward \
+  --lora_path /path/to/wan2.2_i2v_A14b_low_noise_lora_rank64_lightx2v_4step_1022.safetensors \
+  --lora_key_convert auto \
+  --single_file
+```
+
+### Step 2: Assemble a final Diffusers-style directory
+
+```bash
+python tools/wan22/assemble_lightx2v_wan22_i2v_diffusers.py \
+  --diffusers-skeleton /path/to/Wan2.2-I2V-A14B-Diffusers \
+  --high-noise-weight /tmp/wan22_lightx2v/high_noise_out \
+  --low-noise-weight /tmp/wan22_lightx2v/low_noise_out \
+  --output-dir /path/to/Wan2.2-I2V-A14B-LightX2V-Diffusers \
+  --asset-mode symlink \
+  --overwrite
+```
+
+### Step 3: Run offline inference
+
+```bash
+python image_to_video.py \
+  --model /path/to/Wan2.2-I2V-A14B-LightX2V-Diffusers \
+  --image /path/to/input.jpg \
+  --prompt "A cat playing with yarn" \
+  --num-frames 81 \
+  --num-inference-steps 4 \
+  --tensor-parallel-size 4 \
+  --height 480 \
+  --width 832 \
+  --flow-shift 12 \
+  --sample-solver euler \
+  --guidance-scale 1.0 \
+  --guidance-scale-high 1.0 \
+  --boundary-ratio 0.875
+```
+
+Notes:
+
+- This route avoids runtime LoRA loading changes in vLLM-Omni.
+- Output quality/speed depends on chosen LightX2V LoRA and sampling params.
+- For native diffusion LoRA behavior in vLLM-Omni, see `docs/user_guide/diffusion/lora.md`.
