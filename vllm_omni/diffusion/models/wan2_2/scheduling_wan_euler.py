@@ -123,8 +123,7 @@ class WanEulerScheduler:
     ) -> WanEulerSchedulerOutput | tuple[torch.FloatTensor]:
         if isinstance(timestep, (int, torch.IntTensor, torch.LongTensor)):
             raise ValueError(
-                "Passing integer indices as timesteps is not supported. "
-                "Use one value from scheduler.timesteps instead."
+                "Passing integer indices as timesteps is not supported. Use one value from scheduler.timesteps instead."
             )
 
         if self.step_index is None:

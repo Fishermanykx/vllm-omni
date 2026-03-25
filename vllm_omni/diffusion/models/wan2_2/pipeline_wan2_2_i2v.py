@@ -28,9 +28,9 @@ from vllm_omni.diffusion.models.wan2_2.pipeline_wan2_2 import (
     build_wan_scheduler,
     create_transformer_from_config,
     load_transformer_config,
-    retrieve_latents,
     resolve_wan_flow_shift,
     resolve_wan_sample_solver,
+    retrieve_latents,
 )
 from vllm_omni.diffusion.profiler.diffusion_pipeline_profiler import DiffusionPipelineProfilerMixin
 from vllm_omni.diffusion.request import OmniDiffusionRequest
