@@ -51,8 +51,7 @@ def build_wan_scheduler(sample_solver: str, flow_shift: float) -> Any:
         )
 
     raise ValueError(
-        f"Unsupported Wan sample_solver: {sample_solver}. "
-        f"Expected one of: {sorted(WAN_SAMPLE_SOLVER_CHOICES)}"
+        f"Unsupported Wan sample_solver: {sample_solver}. Expected one of: {sorted(WAN_SAMPLE_SOLVER_CHOICES)}"
     )
 
 
@@ -61,10 +60,7 @@ def resolve_wan_sample_solver(req: OmniDiffusionRequest, default: str = "unipc")
     raw = extra_args.get("sample_solver", default)
     sample_solver = str(raw).strip().lower()
     if sample_solver not in WAN_SAMPLE_SOLVER_CHOICES:
-        raise ValueError(
-            f"Invalid sample_solver={raw!r}. "
-            f"Expected one of: {sorted(WAN_SAMPLE_SOLVER_CHOICES)}"
-        )
+        raise ValueError(f"Invalid sample_solver={raw!r}. Expected one of: {sorted(WAN_SAMPLE_SOLVER_CHOICES)}")
     return sample_solver
 
 
