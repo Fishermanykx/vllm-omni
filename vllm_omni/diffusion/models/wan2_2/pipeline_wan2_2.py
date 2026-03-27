@@ -16,6 +16,7 @@ from diffusers.utils.torch_utils import randn_tensor
 from torch import nn
 from transformers import AutoTokenizer, UMT5EncoderModel
 from vllm.model_executor.models.utils import AutoWeightsLoader
+from vllm.model_executor.layers.quantization.base_config import QuantizationConfig
 
 from vllm_omni.diffusion.data import DiffusionOutput, OmniDiffusionConfig
 from vllm_omni.diffusion.distributed.autoencoders.autoencoder_kl_wan import DistributedAutoencoderKLWan
@@ -73,7 +74,10 @@ def load_transformer_config(model_path: str, subfolder: str = "transformer", loc
     return {}
 
 
-def create_transformer_from_config(config: dict) -> WanTransformer3DModel:
+def create_transformer_from_config(
+    config: dict,
+    quant_config: QuantizationConfig | None = None,
+) -> WanTransformer3DModel:
     """Create WanTransformer3DModel from config dict."""
     kwargs = {}
 
@@ -108,7 +112,7 @@ def create_transformer_from_config(config: dict) -> WanTransformer3DModel:
     if "pos_embed_seq_len" in config:
         kwargs["pos_embed_seq_len"] = config["pos_embed_seq_len"]
 
-    return WanTransformer3DModel(**kwargs)
+    return WanTransformer3DModel(quant_config=quant_config, **kwargs)
 
 
 def get_wan22_post_process_func(
@@ -278,13 +282,17 @@ class Wan22Pipeline(nn.Module, CFGParallelMixin, ProgressBarMixin, DiffusionPipe
         # Initialize transformers with correct config (weights loaded via load_weights)
         if load_transformer:
             transformer_config = load_transformer_config(model, "transformer", local_files_only)
-            self.transformer = create_transformer_from_config(transformer_config)
+            self.transformer = create_transformer_from_config(
+                transformer_config, quant_config=od_config.quantization_config
+            )
         else:
             self.transformer = None
 
         if load_transformer_2:
             transformer_2_config = load_transformer_config(model, "transformer_2", local_files_only)
-            self.transformer_2 = create_transformer_from_config(transformer_2_config)
+            self.transformer_2 = create_transformer_from_config(
+                transformer_2_config, quant_config=od_config.quantization_config
+            )
         else:
             self.transformer_2 = None
 

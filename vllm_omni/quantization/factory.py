@@ -22,6 +22,8 @@ from vllm.model_executor.layers.quantization.base_config import (
     QuantizationConfig,
 )
 
+from vllm_omni.platforms import current_omni_platform
+
 from .component_config import ComponentQuantizationConfig
 
 logger = init_logger(__name__)
@@ -41,9 +43,40 @@ def _build_int8(**kw: Any) -> QuantizationConfig:
     return DiffusionInt8Config(**kw)
 
 
+def _build_w8a8(**kw: Any) -> QuantizationConfig:
+    """Ascend-friendly alias for the diffusion Int8 W8A8 path."""
+    from .int8_config import DiffusionInt8Config
+
+    return DiffusionInt8Config(**kw)
+
+
+def _build_fp8(**kw: Any) -> QuantizationConfig:
+    """Build FP8 config, using an NPU-specific MXFP8 path on Ascend."""
+    if current_omni_platform.is_npu():
+        from .npu_fp8_config import DiffusionNPUFP8Config
+
+        return DiffusionNPUFP8Config(**kw)
+
+    config_cls = get_quantization_config("fp8")
+    return config_cls(**kw)
+
+
+def _build_mxfp8(**kw: Any) -> QuantizationConfig:
+    """Explicit MXFP8 alias for Ascend online FP8 quantization."""
+    if not current_omni_platform.is_npu():
+        raise NotImplementedError("MXFP8 diffusion quantization is only supported on Ascend NPU.")
+
+    from .npu_fp8_config import DiffusionNPUFP8Config
+
+    return DiffusionNPUFP8Config(**kw)
+
+
 _OVERRIDES: dict[str, Callable[..., QuantizationConfig]] = {
     "gguf": _build_gguf,
     "int8": _build_int8,
+    "w8a8": _build_w8a8,
+    "fp8": _build_fp8,
+    "mxfp8": _build_mxfp8,
 }
 
 SUPPORTED_QUANTIZATION_METHODS: list[str] = list(dict.fromkeys(QUANTIZATION_METHODS + list(_OVERRIDES.keys())))
