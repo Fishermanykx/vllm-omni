@@ -37,6 +37,18 @@ class _DummyPipelineModel(nn.Module):
         return loaded
 
 
+class _HSDPModule(nn.Module):
+    @staticmethod
+    def _match(name: str, module: nn.Module) -> bool:
+        return name.startswith("layers.") and name.split(".")[-1].isdigit()
+
+    _hsdp_shard_conditions = [_match]
+
+    def __init__(self):
+        super().__init__()
+        self.layers = nn.ModuleList([nn.Linear(2, 2, bias=False)])
+
+
 def _make_loader_with_weights(weight_names: list[str]) -> DiffusersPipelineLoader:
     loader = object.__new__(DiffusersPipelineLoader)
     loader.counter_before_loading_weights = 0.0
@@ -93,3 +105,25 @@ def test_qwen_model_class_selects_qwen_gguf_adapter():
     adapter = get_gguf_adapter("dummy.gguf", object(), source, od_config)
 
     assert adapter.__class__.__name__ == "QwenImageGGUFAdapter"
+
+
+def test_hsdp_targets_prefer_encoder_modules():
+    loader = object.__new__(DiffusersPipelineLoader)
+    model = nn.Module()
+    model.text_encoder = _HSDPModule()
+    model.transformer = _HSDPModule()
+
+    targets = loader._get_hsdp_target_modules(model)
+
+    assert [name for name, _ in targets] == ["text_encoder"]
+
+
+def test_hsdp_targets_fall_back_to_transformers():
+    loader = object.__new__(DiffusersPipelineLoader)
+    model = nn.Module()
+    model.transformer = _HSDPModule()
+    model.transformer_2 = _HSDPModule()
+
+    targets = loader._get_hsdp_target_modules(model)
+
+    assert [name for name, _ in targets] == ["transformer", "transformer_2"]

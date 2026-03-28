@@ -325,6 +325,13 @@ class T5Stack(nn.Module):
 class T5EncoderModel(nn.Module):
     """T5 encoder model applying upstream vLLM layers"""
 
+    @staticmethod
+    def _is_encoder_block(name: str, module: nn.Module) -> bool:
+        """Match T5 encoder blocks for HSDP sharding (e.g., encoder.block.0)."""
+        return name.startswith("encoder.block.") and name.split(".")[-1].isdigit()
+
+    _hsdp_shard_conditions = [_is_encoder_block]
+
     def __init__(self, config: T5Config, prefix: str = ""):
         super().__init__()
         self.config = config

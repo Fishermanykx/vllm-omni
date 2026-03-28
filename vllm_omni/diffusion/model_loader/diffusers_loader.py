@@ -79,6 +79,32 @@ class DiffusersPipelineLoader:
         self.load_config = load_config
         self.od_config = od_config
 
+    @staticmethod
+    def _get_hsdp_target_modules(model: nn.Module) -> list[tuple[str, nn.Module]]:
+        """Collect HSDP target modules, preferring encoders over DiT backbones.
+
+        Encoder-only sharding is useful for cases where sharding the main transformer
+        hurts denoising latency too much. We only select modules that explicitly define
+        ``_hsdp_shard_conditions`` so unrelated components are skipped safely.
+        """
+        encoder_attrs = ("text_encoder", "text_encoder_2", "text_encoder_3", "image_encoder")
+        transformer_attrs = ("transformer", "transformer_2", "dit", "unet")
+
+        def collect(attrs: tuple[str, ...]) -> list[tuple[str, nn.Module]]:
+            modules: list[tuple[str, nn.Module]] = []
+            for attr in attrs:
+                module = getattr(model, attr, None)
+                if module is None or not hasattr(module, "_hsdp_shard_conditions"):
+                    continue
+                modules.append((attr, module))
+            return modules
+
+        encoder_modules = collect(encoder_attrs)
+        if encoder_modules:
+            return encoder_modules
+
+        return collect(transformer_attrs)
+
     def _prepare_weights(
         self,
         model_name_or_path: Path,
@@ -467,7 +493,9 @@ class DiffusersPipelineLoader:
         """Load model with HSDP sharding for inference.
 
         The pipeline contains multiple components (text_encoder, VAE, transformer).
-        Only the transformer is sharded with HSDP. Other components are loaded normally.
+        HSDP prefers encoder components when they provide explicit shard conditions,
+        and falls back to transformer components otherwise. Other components are
+        loaded normally.
 
         Approach: Load weights first using model's load_weights (handles QKV fusion etc.),
         then apply HSDP sharding to redistribute weights across GPUs.
@@ -494,20 +522,11 @@ class DiffusersPipelineLoader:
             model = model_cls(od_config=od_config)
         self.load_weights(model)
 
-        # Collect all transformers to shard (some models have transformer_2 for MoE)
-        transformers_to_shard = []
-        transformer = getattr(model, "transformer", None)
-        if transformer is None:
-            raise ValueError("Model has no transformer attribute for HSDP")
-        transformers_to_shard.append(("transformer", transformer))
+        hsdp_targets = self._get_hsdp_target_modules(model)
+        if not hsdp_targets:
+            raise ValueError("Model has no HSDP-compatible encoder or transformer attributes")
 
-        # Check for transformer_2 (MoE two-stage models like Wan2.2-I2V)
-        transformer_2 = getattr(model, "transformer_2", None)
-        if transformer_2 is not None:
-            transformers_to_shard.append(("transformer_2", transformer_2))
-
-        # Apply HSDP sharding to all transformers
-        for name, trans in transformers_to_shard:
+        for name, target_module in hsdp_targets:
             logger.debug("Applying HSDP to %s", name)
-            apply_hsdp_to_model(trans, hsdp_config)
+            apply_hsdp_to_model(target_module, hsdp_config)
         return model

@@ -147,6 +147,18 @@ class TestT5EncoderModelWeightLoading:
         expected_qkv_dim = 3 * (config.num_heads // 2) * config.d_kv
         assert attn.qkv_proj.weight.shape == (expected_qkv_dim, config.d_model)
 
+    def test_hsdp_shard_conditions_match_encoder_blocks(self, t5_config):
+        model = T5EncoderModel(t5_config, prefix="text_encoder")
+
+        matched = []
+        for name, module in model.named_modules():
+            if any(cond(name, module) for cond in model._hsdp_shard_conditions):
+                matched.append(name)
+
+        assert "encoder.block.0" in matched
+        assert "encoder.block.1" in matched
+        assert "encoder" not in matched
+
 
 class TestTPConstraints:
     """Verify that invalid TP configurations raise clear errors."""
