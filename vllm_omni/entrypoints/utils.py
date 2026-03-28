@@ -20,6 +20,9 @@ logger = init_logger(__name__)
 
 _DIFFUSERS_CLASS_TO_CONFIG: dict[str, str] = {
     "GlmImagePipeline": "glm_image",
+    "Wan22Pipeline": "wan2_2",
+    "Wan22I2VPipeline": "wan2_2",
+    "Wan22TI2VPipeline": "wan2_2",
 }
 
 

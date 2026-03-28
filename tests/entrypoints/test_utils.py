@@ -304,3 +304,32 @@ class TestResolveModelConfigPath:
 
         assert result is not None
         assert "glm_image.yaml" in result
+
+    def test_wan22_diffusers_format_resolution(self, mocker: MockerFixture):
+        """Test Wan2.2 diffusers classes resolve to the shared wan2_2 config."""
+        mocker.patch(
+            "vllm_omni.entrypoints.utils.file_or_path_exists",
+            return_value=True,
+        )
+        mocker.patch(
+            "vllm_omni.entrypoints.utils._try_get_class_name_from_diffusers_config",
+            return_value="Wan22I2VPipeline",
+        )
+        mocker.patch(
+            "vllm_omni.entrypoints.utils.current_omni_platform.get_default_stage_config_path",
+            return_value="vllm_omni/model_executor/stage_configs",
+        )
+
+        original_exists = os.path.exists
+
+        def mock_exists(path):
+            if "wan2_2.yaml" in str(path):
+                return True
+            return original_exists(path)
+
+        mocker.patch("os.path.exists", side_effect=mock_exists)
+
+        result = resolve_model_config_path("Wan-AI/Wan2.2-I2V-A14B-Diffusers")
+
+        assert result is not None
+        assert "wan2_2.yaml" in result
