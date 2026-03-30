@@ -80,8 +80,8 @@ class DiffusersPipelineLoader:
         self.od_config = od_config
 
     @staticmethod
-    def _get_hsdp_target_modules(model: nn.Module, hsdp_target: str) -> list[tuple[str, nn.Module]]:
-        """Collect HSDP target modules based on the configured sharding target."""
+    def _get_hsdp_target_modules(model: nn.Module, hsdp_targets: tuple[str, ...]) -> list[tuple[str, nn.Module]]:
+        """Collect HSDP target modules based on the configured sharding targets."""
         encoder_attrs = ("text_encoder", "text_encoder_2", "text_encoder_3", "image_encoder")
         transformer_attrs = ("transformer", "transformer_2", "dit", "unet")
 
@@ -94,11 +94,23 @@ class DiffusersPipelineLoader:
                 modules.append((attr, module))
             return modules
 
-        if hsdp_target == "encoder":
-            return collect(encoder_attrs)
-        if hsdp_target == "dit":
-            return collect(transformer_attrs)
-        raise ValueError(f"Unsupported hsdp_target: {hsdp_target!r}")
+        target_groups = {
+            "encoder": encoder_attrs,
+            "dit": transformer_attrs,
+        }
+
+        modules: list[tuple[str, nn.Module]] = []
+        seen_names: set[str] = set()
+        for hsdp_target in hsdp_targets:
+            attrs = target_groups.get(hsdp_target)
+            if attrs is None:
+                raise ValueError(f"Unsupported hsdp_target: {hsdp_target!r}")
+            for name, module in collect(attrs):
+                if name in seen_names:
+                    continue
+                seen_names.add(name)
+                modules.append((name, module))
+        return modules
 
     def _prepare_weights(
         self,
@@ -521,10 +533,10 @@ class DiffusersPipelineLoader:
             model = model_cls(od_config=od_config)
         self.load_weights(model)
 
-        hsdp_targets = self._get_hsdp_target_modules(model, parallel_config.hsdp_target)
+        hsdp_targets = self._get_hsdp_target_modules(model, parallel_config.hsdp_targets)
         if not hsdp_targets:
             raise ValueError(
-                f"Model has no HSDP-compatible modules for hsdp_target={parallel_config.hsdp_target!r}"
+                f"Model has no HSDP-compatible modules for hsdp_targets={parallel_config.hsdp_targets!r}"
             )
 
         for name, target_module in hsdp_targets:

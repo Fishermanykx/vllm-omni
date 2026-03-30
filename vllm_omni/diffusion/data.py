@@ -85,7 +85,10 @@ class DiffusionParallelConfig:
     """Number of replica groups for HSDP. Each replica holds a full sharded copy."""
 
     hsdp_target: str = "dit"
-    """HSDP sharding target. Supported values: ``dit`` and ``encoder``."""
+    """Deprecated single-value HSDP target alias. Prefer ``hsdp_targets``."""
+
+    hsdp_targets: list[str] | tuple[str, ...] | None = None
+    """HSDP sharding targets. Supported values include ``dit`` and ``encoder``."""
 
     @model_validator(mode="after")
     def _validate_parallel_config(self) -> Self:
@@ -113,14 +116,29 @@ class DiffusionParallelConfig:
         if self.use_hsdp:
             assert self.hsdp_replicate_size > 0, "HSDP replicate size must be > 0"
             assert self.hsdp_shard_size > 0, "HSDP shard size must be > 0 (should be set in __post_init__)"
-            assert self.hsdp_target in {"dit", "encoder"}, (
-                f"hsdp_target must be one of {{'dit', 'encoder'}}, but got {self.hsdp_target!r}"
+            assert len(self.hsdp_targets) > 0, "hsdp_targets must contain at least one target when HSDP is enabled"
+            invalid_targets = [target for target in self.hsdp_targets if target not in {"dit", "encoder"}]
+            assert not invalid_targets, (
+                f"hsdp_targets contains unsupported values {invalid_targets!r}; "
+                "supported values are {'dit', 'encoder'}"
             )
         return self
 
     def __post_init__(self) -> None:
         if self.sequence_parallel_size is None:
             self.sequence_parallel_size = self.ulysses_degree * self.ring_degree
+
+        if self.hsdp_targets is None:
+            normalized_hsdp_targets = [self.hsdp_target]
+        elif isinstance(self.hsdp_targets, str):
+            normalized_hsdp_targets = [self.hsdp_targets]
+        else:
+            normalized_hsdp_targets = list(self.hsdp_targets)
+
+        deduped_hsdp_targets = list(dict.fromkeys(normalized_hsdp_targets))
+        self.hsdp_targets = tuple(deduped_hsdp_targets)
+        if len(self.hsdp_targets) == 1:
+            self.hsdp_target = self.hsdp_targets[0]
 
         # Calculate world_size from other parallelism dimensions
         other_parallel_world_size = (

@@ -34,7 +34,7 @@ stage_args:
         cfg_parallel_size: 1
         vae_patch_parallel_size: 1
         use_hsdp: true
-        hsdp_target: encoder
+        hsdp_targets: ["encoder"]
         hsdp_shard_size: 4
         hsdp_replicate_size: 1
       # profiler_config:

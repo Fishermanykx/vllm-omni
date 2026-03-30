@@ -113,7 +113,7 @@ def test_hsdp_targets_select_encoder_modules():
     model.text_encoder = _HSDPModule()
     model.transformer = _HSDPModule()
 
-    targets = loader._get_hsdp_target_modules(model, "encoder")
+    targets = loader._get_hsdp_target_modules(model, ("encoder",))
 
     assert [name for name, _ in targets] == ["text_encoder"]
 
@@ -125,9 +125,21 @@ def test_hsdp_targets_select_transformers():
     model.transformer = _HSDPModule()
     model.transformer_2 = _HSDPModule()
 
-    targets = loader._get_hsdp_target_modules(model, "dit")
+    targets = loader._get_hsdp_target_modules(model, ("dit",))
 
     assert [name for name, _ in targets] == ["transformer", "transformer_2"]
+
+
+def test_hsdp_targets_select_encoder_and_transformers():
+    loader = object.__new__(DiffusersPipelineLoader)
+    model = nn.Module()
+    model.text_encoder = _HSDPModule()
+    model.transformer = _HSDPModule()
+    model.transformer_2 = _HSDPModule()
+
+    targets = loader._get_hsdp_target_modules(model, ("encoder", "dit"))
+
+    assert [name for name, _ in targets] == ["text_encoder", "transformer", "transformer_2"]
 
 
 def test_hsdp_targets_reject_invalid_target():
@@ -136,4 +148,4 @@ def test_hsdp_targets_reject_invalid_target():
     model.transformer = _HSDPModule()
 
     with pytest.raises(ValueError, match="Unsupported hsdp_target"):
-        loader._get_hsdp_target_modules(model, "vae")
+        loader._get_hsdp_target_modules(model, ("vae",))

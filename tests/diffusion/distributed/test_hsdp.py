@@ -46,6 +46,7 @@ class TestDiffusionParallelConfigHSDP:
         assert config.hsdp_shard_size == -1
         assert config.hsdp_replicate_size == 1
         assert config.hsdp_target == "dit"
+        assert config.hsdp_targets == ("dit",)
 
     def test_hsdp_auto_shard_size(self):
         """Test auto-calculation of hsdp_shard_size when use_hsdp=True."""
@@ -180,22 +181,32 @@ class TestDiffusionParallelConfigHSDP:
                 "ulysses_degree": 4,
                 "use_hsdp": True,
                 "hsdp_replicate_size": 2,
-                "hsdp_target": "encoder",
+                "hsdp_targets": ["encoder"],
             }
         )
         assert config.use_hsdp is True
         assert config.hsdp_replicate_size == 2
         assert config.hsdp_shard_size == 2  # auto: 4 // 2
         assert config.hsdp_target == "encoder"
+        assert config.hsdp_targets == ("encoder",)
 
     def test_invalid_hsdp_target(self):
         """Test that invalid HSDP targets are rejected."""
-        with pytest.raises(AssertionError, match="hsdp_target must be one of"):
+        with pytest.raises(AssertionError, match="hsdp_targets contains unsupported values"):
             DiffusionParallelConfig(
                 use_hsdp=True,
                 hsdp_shard_size=4,
-                hsdp_target="vae",
+                hsdp_targets=["vae"],
             )
+
+    def test_multiple_hsdp_targets(self):
+        """Test enabling both encoder and dit HSDP targets."""
+        config = DiffusionParallelConfig(
+            use_hsdp=True,
+            hsdp_shard_size=4,
+            hsdp_targets=["encoder", "dit"],
+        )
+        assert config.hsdp_targets == ("encoder", "dit")
 
 
 class TestStandaloneHSDPDetection:
