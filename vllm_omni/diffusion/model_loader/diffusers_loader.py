@@ -294,7 +294,10 @@ class DiffusersPipelineLoader:
         with set_default_torch_dtype(od_config.dtype):
             if od_config.parallel_config.use_hsdp:
                 model = self._load_model_with_hsdp(
-                    od_config, load_format=load_format, custom_pipeline_name=custom_pipeline_name
+                    od_config,
+                    target_device=target_device,
+                    load_format=load_format,
+                    custom_pipeline_name=custom_pipeline_name,
                 )
             else:
                 with target_device:
@@ -487,6 +490,7 @@ class DiffusersPipelineLoader:
     def _load_model_with_hsdp(
         self,
         od_config: OmniDiffusionConfig,
+        target_device: torch.device,
         load_format: str = "default",
         custom_pipeline_name: str | None = None,
     ) -> nn.Module:
@@ -529,4 +533,12 @@ class DiffusersPipelineLoader:
         for name, target_module in hsdp_targets:
             logger.debug("Applying HSDP to %s", name)
             apply_hsdp_to_model(target_module, hsdp_config)
+
+        hsdp_target_names = {name for name, _ in hsdp_targets}
+        for child_name, child_module in model.named_children():
+            if child_name in hsdp_target_names or not isinstance(child_module, nn.Module):
+                continue
+            logger.debug("Moving non-HSDP module %s to %s", child_name, target_device)
+            child_module.to(target_device)
+
         return model
