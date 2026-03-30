@@ -22,6 +22,17 @@ from vllm.model_executor.layers.vocab_parallel_embedding import VocabParallelEmb
 from vllm.model_executor.model_loader.weight_utils import default_weight_loader
 
 
+def is_t5_encoder_block(name: str, module: nn.Module) -> bool:
+    """Match T5/UMT5 encoder blocks for HSDP sharding (e.g., encoder.block.0)."""
+    return name.startswith("encoder.block.") and name.split(".")[-1].isdigit()
+
+
+def attach_t5_encoder_hsdp_shard_conditions(model: nn.Module) -> nn.Module:
+    """Attach default HSDP shard conditions to HF T5-style encoder instances."""
+    model._hsdp_shard_conditions = [is_t5_encoder_block]
+    return model
+
+
 class T5SelfAttention(nn.Module):
     def __init__(
         self,
@@ -328,7 +339,7 @@ class T5EncoderModel(nn.Module):
     @staticmethod
     def _is_encoder_block(name: str, module: nn.Module) -> bool:
         """Match T5 encoder blocks for HSDP sharding (e.g., encoder.block.0)."""
-        return name.startswith("encoder.block.") and name.split(".")[-1].isdigit()
+        return is_t5_encoder_block(name, module)
 
     _hsdp_shard_conditions = [_is_encoder_block]
 
