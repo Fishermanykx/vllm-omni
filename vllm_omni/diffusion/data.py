@@ -84,6 +84,9 @@ class DiffusionParallelConfig:
     hsdp_replicate_size: int = 1
     """Number of replica groups for HSDP. Each replica holds a full sharded copy."""
 
+    hsdp_target: str = "dit"
+    """HSDP sharding target. Supported values: ``dit`` and ``encoder``."""
+
     @model_validator(mode="after")
     def _validate_parallel_config(self) -> Self:
         """Validates the config relationships among the parallel strategies."""
@@ -110,6 +113,9 @@ class DiffusionParallelConfig:
         if self.use_hsdp:
             assert self.hsdp_replicate_size > 0, "HSDP replicate size must be > 0"
             assert self.hsdp_shard_size > 0, "HSDP shard size must be > 0 (should be set in __post_init__)"
+            assert self.hsdp_target in {"dit", "encoder"}, (
+                f"hsdp_target must be one of {{'dit', 'encoder'}}, but got {self.hsdp_target!r}"
+            )
         return self
 
     def __post_init__(self) -> None:

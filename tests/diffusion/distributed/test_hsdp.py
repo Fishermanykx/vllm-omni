@@ -45,6 +45,7 @@ class TestDiffusionParallelConfigHSDP:
         assert config.use_hsdp is False
         assert config.hsdp_shard_size == -1
         assert config.hsdp_replicate_size == 1
+        assert config.hsdp_target == "dit"
 
     def test_hsdp_auto_shard_size(self):
         """Test auto-calculation of hsdp_shard_size when use_hsdp=True."""
@@ -179,11 +180,22 @@ class TestDiffusionParallelConfigHSDP:
                 "ulysses_degree": 4,
                 "use_hsdp": True,
                 "hsdp_replicate_size": 2,
+                "hsdp_target": "encoder",
             }
         )
         assert config.use_hsdp is True
         assert config.hsdp_replicate_size == 2
         assert config.hsdp_shard_size == 2  # auto: 4 // 2
+        assert config.hsdp_target == "encoder"
+
+    def test_invalid_hsdp_target(self):
+        """Test that invalid HSDP targets are rejected."""
+        with pytest.raises(AssertionError, match="hsdp_target must be one of"):
+            DiffusionParallelConfig(
+                use_hsdp=True,
+                hsdp_shard_size=4,
+                hsdp_target="vae",
+            )
 
 
 class TestStandaloneHSDPDetection:

@@ -80,13 +80,8 @@ class DiffusersPipelineLoader:
         self.od_config = od_config
 
     @staticmethod
-    def _get_hsdp_target_modules(model: nn.Module) -> list[tuple[str, nn.Module]]:
-        """Collect HSDP target modules, preferring encoders over DiT backbones.
-
-        Encoder-only sharding is useful for cases where sharding the main transformer
-        hurts denoising latency too much. We only select modules that explicitly define
-        ``_hsdp_shard_conditions`` so unrelated components are skipped safely.
-        """
+    def _get_hsdp_target_modules(model: nn.Module, hsdp_target: str) -> list[tuple[str, nn.Module]]:
+        """Collect HSDP target modules based on the configured sharding target."""
         encoder_attrs = ("text_encoder", "text_encoder_2", "text_encoder_3", "image_encoder")
         transformer_attrs = ("transformer", "transformer_2", "dit", "unet")
 
@@ -99,11 +94,11 @@ class DiffusersPipelineLoader:
                 modules.append((attr, module))
             return modules
 
-        encoder_modules = collect(encoder_attrs)
-        if encoder_modules:
-            return encoder_modules
-
-        return collect(transformer_attrs)
+        if hsdp_target == "encoder":
+            return collect(encoder_attrs)
+        if hsdp_target == "dit":
+            return collect(transformer_attrs)
+        raise ValueError(f"Unsupported hsdp_target: {hsdp_target!r}")
 
     def _prepare_weights(
         self,
@@ -526,9 +521,11 @@ class DiffusersPipelineLoader:
             model = model_cls(od_config=od_config)
         self.load_weights(model)
 
-        hsdp_targets = self._get_hsdp_target_modules(model)
+        hsdp_targets = self._get_hsdp_target_modules(model, parallel_config.hsdp_target)
         if not hsdp_targets:
-            raise ValueError("Model has no HSDP-compatible encoder or transformer attributes")
+            raise ValueError(
+                f"Model has no HSDP-compatible modules for hsdp_target={parallel_config.hsdp_target!r}"
+            )
 
         for name, target_module in hsdp_targets:
             logger.debug("Applying HSDP to %s", name)

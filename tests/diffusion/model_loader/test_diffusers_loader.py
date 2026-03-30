@@ -107,23 +107,33 @@ def test_qwen_model_class_selects_qwen_gguf_adapter():
     assert adapter.__class__.__name__ == "QwenImageGGUFAdapter"
 
 
-def test_hsdp_targets_prefer_encoder_modules():
+def test_hsdp_targets_select_encoder_modules():
     loader = object.__new__(DiffusersPipelineLoader)
     model = nn.Module()
     model.text_encoder = _HSDPModule()
     model.transformer = _HSDPModule()
 
-    targets = loader._get_hsdp_target_modules(model)
+    targets = loader._get_hsdp_target_modules(model, "encoder")
 
     assert [name for name, _ in targets] == ["text_encoder"]
 
 
-def test_hsdp_targets_fall_back_to_transformers():
+def test_hsdp_targets_select_transformers():
     loader = object.__new__(DiffusersPipelineLoader)
     model = nn.Module()
+    model.text_encoder = _HSDPModule()
     model.transformer = _HSDPModule()
     model.transformer_2 = _HSDPModule()
 
-    targets = loader._get_hsdp_target_modules(model)
+    targets = loader._get_hsdp_target_modules(model, "dit")
 
     assert [name for name, _ in targets] == ["transformer", "transformer_2"]
+
+
+def test_hsdp_targets_reject_invalid_target():
+    loader = object.__new__(DiffusersPipelineLoader)
+    model = nn.Module()
+    model.transformer = _HSDPModule()
+
+    with pytest.raises(ValueError, match="Unsupported hsdp_target"):
+        loader._get_hsdp_target_modules(model, "vae")
