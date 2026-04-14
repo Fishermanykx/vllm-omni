@@ -6,7 +6,6 @@ import os
 from collections.abc import Iterable
 from typing import Any
 
-import numpy as np
 import torch
 import torch.nn as nn
 from diffusers.schedulers.scheduling_flow_match_euler_discrete import FlowMatchEulerDiscreteScheduler
@@ -1009,8 +1008,9 @@ class HunyuanImage3Pipeline(HunyuanImage3PreTrainedModel, GenerationMixin, Diffu
         if req.sampling_params.guidance_scale_provided:
             guidance_scale = req.sampling_params.guidance_scale
         if guidance_scale <= 1.0:
-            logger.warning("HunyuanImage3.0 does not support guidance_scale <= 1.0, will set it to 1.0 + epsilon.")
-            guidance_scale = 1.0 + np.finfo(float).eps
+            logger.info(
+                "HunyuanImage3.0 runs without classifier-free guidance when guidance_scale <= 1.0."
+            )
         image_size = (height, width)
         model_inputs = self.prepare_model_inputs(
             prompt=prompt,
