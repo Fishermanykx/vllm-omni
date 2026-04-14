@@ -1008,9 +1008,7 @@ class HunyuanImage3Pipeline(HunyuanImage3PreTrainedModel, GenerationMixin, Diffu
         if req.sampling_params.guidance_scale_provided:
             guidance_scale = req.sampling_params.guidance_scale
         if guidance_scale <= 1.0:
-            logger.info(
-                "HunyuanImage3.0 runs without classifier-free guidance when guidance_scale <= 1.0."
-            )
+            logger.info("HunyuanImage3.0 runs without classifier-free guidance when guidance_scale <= 1.0.")
         image_size = (height, width)
         model_inputs = self.prepare_model_inputs(
             prompt=prompt,
