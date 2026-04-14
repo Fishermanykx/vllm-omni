@@ -1,5 +1,5 @@
 # Stage config for running Hunyuan-Image3.0 DiT on NPU.
-# The following config has been verified on 8x A3-64G NPUs.
+# The following config has been verified on 2x A3-64G NPUs.
 
 # Stage 0: Diffusion (DiT + VAE)
 # This stage receives noise and timesteps and performs denoising + VAE decode.
@@ -7,7 +7,7 @@ stage_args:
   - stage_id: 0
     stage_type: diffusion
     runtime:
-      devices: "0,1,2,3,4,5,6,7"
+      devices: "0,1"
     engine_args:
       max_num_seqs: 1
       model_stage: dit
@@ -19,7 +19,7 @@ stage_args:
       enable_prefix_caching: false
       max_num_batched_tokens: 32768
       parallel_config:
-        tensor_parallel_size: 8
+        tensor_parallel_size: 2
         enable_expert_parallel: true
       omni_kv_config:
         need_recv_cache: true
