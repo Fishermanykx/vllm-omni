@@ -106,3 +106,8 @@ class TestCreateDefaultDiffusion:
         ea = stages[0]["engine_args"]
         assert ea["enforce_eager"] is True
         assert ea["lora_path"] == "/tmp/lora"
+
+    def test_additional_config_roundtrip(self):
+        additional_config = {"torchair_graph_config": {"enabled": True}}
+        od = _roundtrip_diffusion_config(model="x", additional_config=additional_config)
+        assert od.additional_config == additional_config

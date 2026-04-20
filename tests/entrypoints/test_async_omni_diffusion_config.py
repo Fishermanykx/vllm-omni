@@ -93,3 +93,26 @@ def test_serve_cli_accepts_ulysses_mode():
     assert args.ulysses_mode == "advanced_uaa"
     assert parallel_config.ulysses_degree == 4
     assert parallel_config.ulysses_mode == "advanced_uaa"
+
+
+def test_serve_cli_accepts_additional_config():
+    """Ensure diffusion serve CLI exposes additional_config and forwards it to stage config."""
+    parser = FlexibleArgumentParser()
+    subparsers = parser.add_subparsers(dest="command")
+    OmniServeCommand().subparser_init(subparsers)
+
+    args = parser.parse_args(
+        [
+            "serve",
+            "Qwen/Qwen-Image",
+            "--omni",
+            "--additional-config",
+            '{"torchair_graph_config":{"enabled":true}}',
+        ]
+    )
+
+    stage_cfg = _create_default_diffusion_stage_cfg(args)[0]
+    engine_args = stage_cfg["engine_args"]
+
+    assert args.additional_config == {"torchair_graph_config": {"enabled": True}}
+    assert engine_args["additional_config"] == {"torchair_graph_config": {"enabled": True}}
