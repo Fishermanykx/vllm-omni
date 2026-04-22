@@ -128,3 +128,26 @@ def test_serve_cli_accepts_diffusion_pipeline_profiler_flag():
 
     assert args.enable_diffusion_pipeline_profiler is True
     assert stage_cfg["engine_args"]["enable_diffusion_pipeline_profiler"] is True
+
+
+def test_serve_cli_accepts_additional_config():
+    """Ensure diffusion serve CLI exposes additional_config and forwards it to stage config."""
+    parser = FlexibleArgumentParser()
+    subparsers = parser.add_subparsers(dest="command")
+    OmniServeCommand().subparser_init(subparsers)
+
+    args = parser.parse_args(
+        [
+            "serve",
+            "Qwen/Qwen-Image",
+            "--omni",
+            "--additional-config",
+            '{"torchair_graph_config":{"enabled":true}}',
+        ]
+    )
+
+    stage_cfg = _create_default_diffusion_stage_cfg(args)[0]
+    engine_args = stage_cfg["engine_args"]
+
+    assert args.additional_config == {"torchair_graph_config": {"enabled": True}}
+    assert engine_args["additional_config"] == {"torchair_graph_config": {"enabled": True}}
