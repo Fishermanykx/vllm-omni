@@ -54,7 +54,13 @@ from vllm_omni.worker.gpu_memory_utils import get_process_gpu_memory
 logger = init_logger(__name__)
 
 
-def _create_worker_vllm_config(device: torch.device, od_config: OmniDiffusionConfig) -> VllmConfig:
+def _is_unexpected_additional_config_type_error(exc: TypeError) -> bool:
+    """Return True only for constructor rejections of the additional_config kwarg."""
+    message = str(exc)
+    return "unexpected keyword argument" in message and "additional_config" in message
+
+
+def _create_diffusion_worker_vllm_config(device: torch.device, od_config: OmniDiffusionConfig) -> VllmConfig:
     """Create a worker-local VllmConfig while preserving additional_config when supported."""
     config_kwargs: dict[str, Any] = {
         "compilation_config": CompilationConfig(),
@@ -66,7 +72,7 @@ def _create_worker_vllm_config(device: torch.device, od_config: OmniDiffusionCon
     try:
         return VllmConfig(**config_kwargs)
     except TypeError as exc:
-        if "additional_config" not in str(exc):
+        if not _is_unexpected_additional_config_type_error(exc):
             raise
 
         logger.debug("Worker-local VllmConfig does not accept additional_config in constructor: %s", exc)
@@ -139,7 +145,7 @@ class DiffusionWorker:
 
         # Create vllm_config for parallel configuration. Pass explicit device_config
         # so DeviceConfig does not rely on current_platform in worker subprocesses.
-        vllm_config = _create_worker_vllm_config(self.device, self.od_config)
+        vllm_config = _create_diffusion_worker_vllm_config(self.device, self.od_config)
         vllm_config.parallel_config.tensor_parallel_size = self.od_config.parallel_config.tensor_parallel_size
         vllm_config.parallel_config.data_parallel_size = self.od_config.parallel_config.data_parallel_size
         vllm_config.parallel_config.enable_expert_parallel = self.od_config.parallel_config.enable_expert_parallel
