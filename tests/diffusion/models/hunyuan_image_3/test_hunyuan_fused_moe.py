@@ -115,18 +115,15 @@ class TestHunyuanFusedMoEFactory:
 class TestHunyuanFusedMoERuntimeInit:
     """Test runtime initialization for Ascend Hunyuan fused MoE."""
 
-    def test_prepare_runtime_initializes_ascend_config_and_weight_prefetch(self, mocker):
+    def test_prepare_runtime_initializes_ascend_config(self, mocker):
         import vllm_omni.platforms.npu.models.hunyuan_fused_moe as hunyuan_moe
 
         mock_vllm_config = mocker.Mock()
-        mock_ascend_config = mocker.Mock(weight_prefetch_config=mocker.sentinel.weight_prefetch_config)
         mock_ctx = mocker.Mock(vllm_config=mock_vllm_config)
         mock_world_group = mocker.Mock(device_group="device-group", local_rank=0)
 
         mocker.patch.object(hunyuan_moe, "omni_get_ctx", return_value=mock_ctx)
-        mocker.patch.object(hunyuan_moe, "init_ascend_config", return_value=mock_ascend_config)
-        mocker.patch.object(hunyuan_moe, "get_ascend_config", return_value=mock_ascend_config)
-        mock_set_weight_prefetch = mocker.patch.object(hunyuan_moe, "set_weight_prefetch_method")
+        mocker.patch.object(hunyuan_moe, "init_ascend_config")
         mocker.patch.object(hunyuan_moe, "get_data_parallel_world_size", return_value=1)
         mocker.patch.object(hunyuan_moe, "get_tensor_model_parallel_world_size", return_value=1)
         mocker.patch.object(hunyuan_moe, "get_world_group", return_value=mock_world_group)
@@ -139,4 +136,3 @@ class TestHunyuanFusedMoERuntimeInit:
         hunyuan_moe.prepare_hunyuan_fused_moe_runtime()
 
         hunyuan_moe.init_ascend_config.assert_called_once_with(mock_vllm_config)
-        mock_set_weight_prefetch.assert_called_once_with(mocker.sentinel.weight_prefetch_config)

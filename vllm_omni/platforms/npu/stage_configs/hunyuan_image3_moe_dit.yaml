@@ -20,7 +20,7 @@ stage_args:
       max_num_batched_tokens: 32768
       parallel_config:
         tensor_parallel_size: 2
-        enable_expert_parallel: true
+        enable_expert_parallel: false
       omni_kv_config:
         need_recv_cache: true
 

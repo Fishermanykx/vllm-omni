@@ -18,7 +18,6 @@ from vllm_ascend.ops.fused_moe.moe_comm_method import _MoECommMethods
 from vllm_ascend.utils import (
     AscendDeviceType,
     get_ascend_device_type,
-    set_weight_prefetch_method,
 )
 
 from vllm_omni.diffusion.distributed.parallel_state import (
@@ -89,7 +88,6 @@ def _select_moe_comm_method(vllm_config: VllmConfig) -> MoECommType | None:
 def prepare_hunyuan_fused_moe_runtime() -> None:
     vllm_config = omni_get_ctx().vllm_config
     init_ascend_config(vllm_config)
-    set_weight_prefetch_method(get_ascend_config().weight_prefetch_config)
 
     world_size = torch.distributed.get_world_size()
     data_parallel_size = get_data_parallel_world_size()
@@ -116,12 +114,6 @@ class AscendHunyuanFusedMoE(AscendSharedFusedMoE):
     def __init__(self, *, prefix: str = "", **kwargs: Any) -> None:
         super().__init__(prefix=prefix, **kwargs)
         self._prefix = prefix
-        self._init_hook_handle = self.register_forward_pre_hook(self._initialize_kernel_hook, with_kwargs=True)
-
-    def _initialize_kernel_hook(self, module: Any, args: Any, kwargs: Any) -> None:
-        if self.quant_method:
-            self.quant_method.process_weights_after_loading(self)
-        self._init_hook_handle.remove()
 
     def forward(self, hidden_states: Any, router_logits: Any) -> Any:
         _set_hunyuan_fused_moe_forward_context(hidden_states.shape[0])
