@@ -11,10 +11,14 @@ from vllm.distributed.parallel_state import get_tensor_model_parallel_world_size
 from vllm.distributed.parallel_state import (
     init_model_parallel_group as vllm_init_model_parallel_group,
 )
+from vllm_ascend.ascend_config import get_ascend_config, init_ascend_config
 from vllm_ascend.ascend_forward_context import MoECommType
 from vllm_ascend.ops.fused_moe.fused_moe import AscendSharedFusedMoE
 from vllm_ascend.ops.fused_moe.moe_comm_method import _MoECommMethods
-from vllm_ascend.utils import AscendDeviceType, get_ascend_device_type
+from vllm_ascend.utils import (
+    AscendDeviceType,
+    get_ascend_device_type,
+)
 
 from vllm_omni.diffusion.distributed.parallel_state import (
     get_data_parallel_world_size,
@@ -82,6 +86,9 @@ def _select_moe_comm_method(vllm_config: VllmConfig) -> MoECommType | None:
 
 
 def prepare_hunyuan_fused_moe_runtime() -> None:
+    vllm_config = omni_get_ctx().vllm_config
+    init_ascend_config(vllm_config)
+
     world_size = torch.distributed.get_world_size()
     data_parallel_size = get_data_parallel_world_size()
     tensor_parallel_size = get_tensor_model_parallel_world_size()
@@ -95,7 +102,7 @@ def prepare_hunyuan_fused_moe_runtime() -> None:
         local_rank=local_rank,
     )
 
-    moe_comm_type = _select_moe_comm_method(vllm_config=omni_get_ctx().vllm_config)
+    moe_comm_type = _select_moe_comm_method(vllm_config=vllm_config)
     _ensure_forward_context_attr("num_tokens", int | None, None)
     _ensure_forward_context_attr("in_profile_run", bool, False)
     _ensure_forward_context_attr("moe_comm_type", MoECommType | None, moe_comm_type)

@@ -1,0 +1,142 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: Copyright contributors to the vLLM project
+"""Unit tests for HunyuanFusedMoE (Support HunyuanImage3 Diffusion Model, 5a779b4)."""
+
+import pytest
+
+pytestmark = [pytest.mark.core_model, pytest.mark.cpu]
+
+
+class TestHunyuanFusedMoEPlatformDispatch:
+    """Test platform dispatch via platform qualname hooks."""
+
+    def test_default_platform_uses_default_impl_qualname(self, mocker):
+        """HunyuanFusedMoE should resolve the impl class from the platform hook."""
+        import vllm_omni.diffusion.models.hunyuan_image_3.hunyuan_fused_moe as hunyuan_moe
+
+        mock_platform = mocker.MagicMock()
+        mock_platform.get_diffusion_model_impl_qualname.return_value = (
+            "vllm_omni.diffusion.models.hunyuan_image_3.hunyuan_fused_moe.HunyuanFusedMoEDefault"
+        )
+
+        mocker.patch.object(
+            hunyuan_moe,
+            "current_omni_platform",
+            mock_platform,
+        )
+        mock_resolve = mocker.patch.object(hunyuan_moe, "resolve_obj_by_qualname")
+        mock_impl = mocker.MagicMock()
+        mock_resolve.return_value = mock_impl
+
+        from vllm_omni.diffusion.models.hunyuan_image_3.hunyuan_fused_moe import (
+            HunyuanFusedMoE,
+        )
+
+        HunyuanFusedMoE(prefix="")
+
+        mock_platform.prepare_diffusion_op_runtime.assert_called_once_with("hunyuan_fused_moe")
+        mock_platform.get_diffusion_model_impl_qualname.assert_called_once_with("hunyuan_fused_moe")
+        mock_resolve.assert_called_once_with(
+            "vllm_omni.diffusion.models.hunyuan_image_3.hunyuan_fused_moe.HunyuanFusedMoEDefault"
+        )
+        mock_impl.assert_called_once_with(prefix="")
+
+
+class TestHunyuanFusedMoEFactory:
+    """Test HunyuanFusedMoE factory __new__ and make_expert_params_mapping delegation."""
+
+    def test_new_delegates_to_impl_class(self, mocker):
+        """HunyuanFusedMoE(prefix=..., **kwargs) should instantiate and return impl instance."""
+        import vllm_omni.diffusion.models.hunyuan_image_3.hunyuan_fused_moe as hunyuan_moe
+
+        class MockImpl:
+            def __init__(self, *, prefix: str = "", **kwargs):
+                self.prefix = prefix
+                self.kwargs = kwargs
+
+        mock_platform = mocker.MagicMock()
+        mock_platform.get_diffusion_model_impl_qualname.return_value = "mock.impl.Qualname"
+        mocker.patch.object(hunyuan_moe, "current_omni_platform", mock_platform)
+
+        mock_impl_class = mocker.MagicMock(return_value=MockImpl(prefix="test", a=1))
+        mocker.patch.object(hunyuan_moe, "resolve_obj_by_qualname", return_value=mock_impl_class)
+
+        from vllm_omni.diffusion.models.hunyuan_image_3.hunyuan_fused_moe import (
+            HunyuanFusedMoE,
+        )
+
+        result = HunyuanFusedMoE(prefix="test", a=1)
+
+        assert isinstance(result, MockImpl)
+        assert result.prefix == "test"
+        assert result.kwargs == {"a": 1}
+        mock_platform.prepare_diffusion_op_runtime.assert_called_once_with("hunyuan_fused_moe")
+        mock_platform.get_diffusion_model_impl_qualname.assert_called_once_with("hunyuan_fused_moe")
+        mock_impl_class.assert_called_once_with(prefix="test", a=1)
+
+    def test_make_expert_params_mapping_delegates_to_impl(self, mocker):
+        """make_expert_params_mapping should delegate to impl class method."""
+        import vllm_omni.diffusion.models.hunyuan_image_3.hunyuan_fused_moe as hunyuan_moe
+
+        expected_mapping = [("a", "b", 0, "c")]
+        mock_platform = mocker.MagicMock()
+        mock_platform.get_diffusion_model_impl_qualname.return_value = "mock.impl.Qualname"
+        mocker.patch.object(hunyuan_moe, "current_omni_platform", mock_platform)
+
+        mock_impl_class = mocker.MagicMock()
+        mock_impl_class.make_expert_params_mapping = mocker.MagicMock(return_value=expected_mapping)
+        mocker.patch.object(hunyuan_moe, "resolve_obj_by_qualname", return_value=mock_impl_class)
+
+        from vllm_omni.diffusion.models.hunyuan_image_3.hunyuan_fused_moe import (
+            HunyuanFusedMoE,
+        )
+
+        result = HunyuanFusedMoE.make_expert_params_mapping(
+            model=None,
+            ckpt_gate_proj_name="gate",
+            ckpt_down_proj_name="down",
+            ckpt_up_proj_name="up",
+            num_experts=4,
+            num_redundant_experts=0,
+        )
+
+        assert result == expected_mapping
+        mock_platform.get_diffusion_model_impl_qualname.assert_called_once_with("hunyuan_fused_moe")
+        mock_impl_class.make_expert_params_mapping.assert_called_once_with(
+            None,
+            ckpt_gate_proj_name="gate",
+            ckpt_down_proj_name="down",
+            ckpt_up_proj_name="up",
+            num_experts=4,
+            num_redundant_experts=0,
+        )
+
+
+class TestHunyuanFusedMoERuntimeInit:
+    """Test runtime initialization for Ascend Hunyuan fused MoE."""
+
+    def test_prepare_runtime_initializes_ascend_config_and_weight_prefetch(self, mocker):
+        import vllm_omni.platforms.npu.models.hunyuan_fused_moe as hunyuan_moe
+
+        mock_vllm_config = mocker.Mock()
+        mock_ascend_config = mocker.Mock(weight_prefetch_config=mocker.sentinel.weight_prefetch_config)
+        mock_ctx = mocker.Mock(vllm_config=mock_vllm_config)
+        mock_world_group = mocker.Mock(device_group="device-group", local_rank=0)
+
+        mocker.patch.object(hunyuan_moe, "omni_get_ctx", return_value=mock_ctx)
+        mocker.patch.object(hunyuan_moe, "init_ascend_config", return_value=mock_ascend_config)
+        mocker.patch.object(hunyuan_moe, "get_ascend_config", return_value=mock_ascend_config)
+        mock_set_weight_prefetch = mocker.patch.object(hunyuan_moe, "set_weight_prefetch_method")
+        mocker.patch.object(hunyuan_moe, "get_data_parallel_world_size", return_value=1)
+        mocker.patch.object(hunyuan_moe, "get_tensor_model_parallel_world_size", return_value=1)
+        mocker.patch.object(hunyuan_moe, "get_world_group", return_value=mock_world_group)
+        mocker.patch.object(hunyuan_moe, "_init_mc2_group_for_diffusion")
+        mocker.patch.object(hunyuan_moe, "_select_moe_comm_method", return_value="allgather")
+        mocker.patch.object(hunyuan_moe, "_ensure_forward_context_attr")
+        mocker.patch("torch.distributed.get_world_size", return_value=1)
+        mocker.patch("torch.distributed.get_backend", return_value="hccl")
+
+        hunyuan_moe.prepare_hunyuan_fused_moe_runtime()
+
+        hunyuan_moe.init_ascend_config.assert_called_once_with(mock_vllm_config)
+        mock_set_weight_prefetch.assert_called_once_with(mocker.sentinel.weight_prefetch_config)
