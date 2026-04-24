@@ -18,12 +18,14 @@ from vllm.model_executor.models.utils import AutoWeightsLoader
 from vllm.transformers_utils.config import get_config
 
 from vllm_omni.diffusion.data import DiffusionOutput, OmniDiffusionConfig
+from vllm_omni.diffusion.distributed.autoencoders.autoencoder_kl_hunyuan import (
+    DistributedAutoencoderKLHunyuan,
+)
 from vllm_omni.diffusion.distributed.utils import get_local_device
 from vllm_omni.diffusion.model_loader.diffusers_loader import DiffusersPipelineLoader
 from vllm_omni.diffusion.profiler.diffusion_pipeline_profiler import DiffusionPipelineProfilerMixin
 from vllm_omni.diffusion.request import OmniDiffusionRequest
 
-from .autoencoder import AutoencoderKLConv3D
 from .hunyuan_image3_tokenizer import TokenizerWrapper
 from .hunyuan_image3_transformer import (
     CausalMMOutputWithPast,
@@ -96,7 +98,7 @@ class HunyuanImage3Pipeline(HunyuanImage3PreTrainedModel, GenerationMixin, Diffu
         )
         self.model = HunyuanImage3Model(self.hf_config, quant_config=quant_config)
         self.transformer = self.model
-        self.vae = AutoencoderKLConv3D.from_config(self.hf_config.vae)
+        self.vae = DistributedAutoencoderKLHunyuan.from_config(self.hf_config.vae)
         self._pipeline = None
         self._tkwrapper = TokenizerWrapper(od_config.model)
         self.image_processor = HunyuanImage3ImageProcessor(self.hf_config)
