@@ -18,9 +18,11 @@ stage_args:
       distributed_executor_backend: "mp"
       enable_prefix_caching: false
       max_num_batched_tokens: 32768
+      vae_use_tiling: true
       parallel_config:
         tensor_parallel_size: 2
         enable_expert_parallel: false
+        vae_patch_parallel_size: 2
       omni_kv_config:
         need_recv_cache: true
 
