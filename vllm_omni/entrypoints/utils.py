@@ -335,11 +335,16 @@ def resolve_model_config_path(model: str) -> str:
                 f"Please ensure the model has proper configuration files with 'model_type' field"
             )
 
-    default_config_path = current_omni_platform.get_default_stage_config_path()
     if model_type in _DIFFUSERS_CLASS_TO_CONFIG:
         normalized_model_type = _DIFFUSERS_CLASS_TO_CONFIG[model_type]
     else:
         normalized_model_type = model_type.replace("-", "_")
+
+    deploy_config_path = PROJECT_ROOT / "vllm_omni" / "deploy" / f"{normalized_model_type}.yaml"
+    if os.path.exists(deploy_config_path):
+        return str(deploy_config_path)
+
+    default_config_path = current_omni_platform.get_default_stage_config_path()
     model_type_str = f"{normalized_model_type}.yaml"
     complete_config_path = PROJECT_ROOT / default_config_path / model_type_str
     if os.path.exists(complete_config_path):

@@ -1,0 +1,124 @@
+# HunyuanImage-3.0-Instruct deploy: AR (stage 0) + DiT (stage 1).
+# The base CUDA layout follows the existing 8-GPU AR->DiT KV-reuse config
+# (4 GPUs for AR, 4 GPUs for DiT). Platform overrides below fold in the
+# verified NPU/XPU stage configs that previously lived under stage_configs/.
+pipeline: hunyuan_image3
+trust_remote_code: true
+distributed_executor_backend: mp
+enable_prefix_caching: false
+pipeline_parallel_size: 1
+async_chunk: false
+
+modes:
+  - mode: text-to-image
+    stages: [0, 1]
+  - mode: image-to-text
+    stages: [0]
+  - mode: image-editing
+    stages: [0, 1]
+
+stages:
+  - stage_id: 0
+    max_num_seqs: 1
+    gpu_memory_utilization: 0.9
+    enforce_eager: true
+    max_num_batched_tokens: 32768
+    devices: "0,1,2,3"
+    tensor_parallel_size: 4
+    engine_output_type: latent
+    hf_overrides:
+      rope_parameters:
+        mrope_section: [0, 32, 32]
+        rope_type: default
+    omni_kv_config:
+      need_send_cache: true
+      kv_transfer_criteria:
+        type: prefill_finished
+    default_sampling_params:
+      temperature: 0.6
+      top_p: 0.95
+      top_k: 1024
+      max_tokens: 4096
+      stop_token_ids: [127957]
+      detokenize: false
+
+  - stage_id: 1
+    max_num_seqs: 1
+    gpu_memory_utilization: 0.9
+    enforce_eager: true
+    devices: "4,5,6,7"
+    model_stage: diffusion
+    engine_output_type: image
+    vae_use_slicing: false
+    vae_use_tiling: false
+    cache_backend:
+    cache_config:
+    enable_cache_dit_summary: false
+    omni_kv_config:
+      need_recv_cache: true
+    parallel_config:
+      pipeline_parallel_size: 1
+      data_parallel_size: 1
+      tensor_parallel_size: 4
+      enable_expert_parallel: true
+      sequence_parallel_size: 1
+      ulysses_degree: 1
+      ring_degree: 1
+      cfg_parallel_size: 1
+      vae_patch_parallel_size: 1
+      use_hsdp: false
+      hsdp_shard_size: -1
+      hsdp_replicate_size: 1
+    default_sampling_params:
+      seed: 42
+      num_inference_steps: 50
+      guidance_scale: 2.5
+
+edges:
+  - from: 0
+    to: 1
+    window_size: -1
+    max_inflight: 1
+
+platforms:
+  npu:
+    stages:
+      - stage_id: 0
+        gpu_memory_utilization: 0.65
+        devices: "0,1,2,3"
+        tensor_parallel_size: 4
+      - stage_id: 1
+        gpu_memory_utilization: 0.65
+        devices: "4,5,6,7"
+        max_num_batched_tokens: 32768
+        parallel_config:
+          tensor_parallel_size: 4
+          enable_expert_parallel: true
+
+  xpu:
+    stages:
+      - stage_id: 0
+        gpu_memory_utilization: 0.95
+        devices: "0,1,2,3,4,5,6,7"
+        tensor_parallel_size: 8
+        max_num_batched_tokens: 32784
+        quantization: fp8
+        enable_expert_parallel: true
+        worker_cls: vllm_omni.platforms.xpu.worker.xpu_ar_worker.XPUARWorker
+      - stage_id: 1
+        gpu_memory_utilization: 0.9
+        devices: "0,1,2,3,4,5,6,7"
+        quantization: fp8
+        parallel_config:
+          pipeline_parallel_size: 1
+          data_parallel_size: 1
+          tensor_parallel_size: 8
+          enable_expert_parallel: true
+          sequence_parallel_size: 1
+          ulysses_degree: 1
+          ring_degree: 1
+          cfg_parallel_size: 1
+          vae_patch_parallel_size: 1
+          use_hsdp: false
+          hsdp_shard_size: -1
+          hsdp_replicate_size: 1
