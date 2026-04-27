@@ -130,7 +130,8 @@ def parse_args():
     )
 
     # Omni init args
-    parser.add_argument("--stage-configs-path", type=str, default=None, help="Custom stage config YAML path.")
+    parser.add_argument("--deploy-config", type=str, default=None, help="Custom deploy YAML path.")
+    parser.add_argument("--stage-configs-path", type=str, default=None, help="Custom legacy stage config YAML path.")
     parser.add_argument("--log-stats", action="store_true", default=False)
     parser.add_argument("--init-timeout", type=int, default=300, help="Initialization timeout in seconds.")
     parser.add_argument("--enforce-eager", action="store_true", help="Disable torch.compile.")
@@ -148,17 +149,24 @@ def main():
     # Determine task for prompt formatting
     task = args.bot_task or _MODALITY_TASK_MAP[args.modality]
 
+    if args.deploy_config is not None and args.stage_configs_path is not None:
+        raise ValueError("--deploy-config and --stage-configs-path are mutually exclusive.")
+
     # Determine stage config
-    stage_configs_path = args.stage_configs_path or _MODALITY_DEFAULT_CONFIG[args.modality]
+    stage_configs_path = None if args.deploy_config is not None else args.stage_configs_path
+    stage_configs_path = stage_configs_path or _MODALITY_DEFAULT_CONFIG[args.modality]
 
     # Build Omni
     omni_kwargs = {
         "model": args.model,
-        "stage_configs_path": stage_configs_path,
         "log_stats": args.log_stats,
         "init_timeout": args.init_timeout,
         "enforce_eager": args.enforce_eager,
     }
+    if args.deploy_config is not None:
+        omni_kwargs["deploy_config"] = args.deploy_config
+    else:
+        omni_kwargs["stage_configs_path"] = stage_configs_path
     if args.modality in ("text2img", "img2img"):
         omni_kwargs["mode"] = "text-to-image"
 
@@ -222,7 +230,10 @@ def main():
     print("HunyuanImage-3.0 Generation Configuration:")
     print(f"  Model: {args.model}")
     print(f"  Modality: {args.modality}")
-    print(f"  Stage config: {stage_configs_path}")
+    if args.deploy_config is not None:
+        print(f"  Deploy config: {args.deploy_config}")
+    else:
+        print(f"  Stage config: {stage_configs_path}")
     print(f"  Num stages: {omni.num_stages}")
     if args.modality in ("text2img", "img2img"):
         print(f"  Inference steps: {args.steps}")
