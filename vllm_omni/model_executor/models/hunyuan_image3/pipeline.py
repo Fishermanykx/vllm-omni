@@ -49,3 +49,48 @@ HUNYUAN_IMAGE3_PIPELINE = PipelineConfig(
         ),
     ),
 )
+
+
+HUNYUAN_IMAGE3_AR_PIPELINE = PipelineConfig(
+    model_type="hunyuan_image3_ar",
+    model_arch=_HUNYUAN_IMAGE3_MODEL_ARCH,
+    hf_architectures=(),
+    stages=(
+        StagePipelineConfig(
+            stage_id=0,
+            model_stage="AR",
+            execution_type=StageExecutionType.LLM_AR,
+            input_sources=(),
+            final_output=True,
+            final_output_type="text",
+            owns_tokenizer=False,
+            requires_multimodal_data=True,
+            model_arch=_HUNYUAN_IMAGE3_MODEL_ARCH,
+            engine_output_type="latent",
+            prompt_expand_func=f"{_HUNYUAN_IMAGE3_INPUT_PROCESSOR}.expand_cfg_prompts",
+            omni_kv_config={"need_send_cache": True},
+        ),
+    ),
+)
+
+
+HUNYUAN_IMAGE3_DIT_PIPELINE = PipelineConfig(
+    model_type="hunyuan_image3_dit",
+    model_arch=_HUNYUAN_IMAGE3_MODEL_ARCH,
+    hf_architectures=(),
+    stages=(
+        StagePipelineConfig(
+            stage_id=1,
+            model_stage="dit",
+            execution_type=StageExecutionType.DIFFUSION,
+            input_sources=(0,),
+            final_output=True,
+            final_output_type="image",
+            requires_multimodal_data=True,
+            model_arch=_HUNYUAN_IMAGE3_MODEL_ARCH,
+            custom_process_input_func=f"{_HUNYUAN_IMAGE3_INPUT_PROCESSOR}.ar2diffusion",
+            cfg_kv_collect_func=f"{_HUNYUAN_IMAGE3_INPUT_PROCESSOR}.collect_cfg_kv_caches",
+            omni_kv_config={"need_recv_cache": True},
+        ),
+    ),
+)
