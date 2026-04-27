@@ -1,8 +1,7 @@
 # HunyuanImage-3.0-Instruct DiT-only deploy.
 #
-# Use this when AR and DiT are deployed as independent services. This file
-# resolves to stage 1 only, preserving the downstream stage id used by the
-# two-stage KV-reuse topology without forcing stage 0 to launch locally.
+# Use this for standalone DiT/offline execution. This file resolves to one
+# diffusion stage with stage_id 0 and does not depend on the AR stage.
 pipeline: hunyuan_image3_dit
 trust_remote_code: true
 distributed_executor_backend: mp
@@ -10,11 +9,11 @@ enable_prefix_caching: false
 async_chunk: false
 
 stages:
-  - stage_id: 1
+  - stage_id: 0
     max_num_seqs: 1
     gpu_memory_utilization: 0.9
     enforce_eager: true
-    devices: "4,5,6,7"
+    devices: "0,1,2,3"
     model_stage: diffusion
     engine_output_type: image
     vae_use_slicing: false
@@ -22,8 +21,6 @@ stages:
     cache_backend:
     cache_config:
     enable_cache_dit_summary: false
-    omni_kv_config:
-      need_recv_cache: true
     parallel_config:
       pipeline_parallel_size: 1
       data_parallel_size: 1
@@ -45,9 +42,9 @@ stages:
 platforms:
   npu:
     stages:
-      - stage_id: 1
+      - stage_id: 0
         gpu_memory_utilization: 0.65
-        devices: "4,5,6,7"
+        devices: "0,1,2,3"
         max_num_batched_tokens: 32768
         parallel_config:
           tensor_parallel_size: 4
@@ -55,7 +52,7 @@ platforms:
 
   xpu:
     stages:
-      - stage_id: 1
+      - stage_id: 0
         gpu_memory_utilization: 0.9
         devices: "0,1,2,3,4,5,6,7"
         quantization: fp8

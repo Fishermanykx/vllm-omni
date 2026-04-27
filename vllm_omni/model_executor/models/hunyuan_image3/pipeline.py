@@ -80,17 +80,14 @@ HUNYUAN_IMAGE3_DIT_PIPELINE = PipelineConfig(
     hf_architectures=(),
     stages=(
         StagePipelineConfig(
-            stage_id=1,
+            stage_id=0,
             model_stage="dit",
             execution_type=StageExecutionType.DIFFUSION,
-            input_sources=(0,),
+            input_sources=(),
             final_output=True,
             final_output_type="image",
             requires_multimodal_data=True,
             model_arch=_HUNYUAN_IMAGE3_MODEL_ARCH,
-            custom_process_input_func=f"{_HUNYUAN_IMAGE3_INPUT_PROCESSOR}.ar2diffusion",
-            cfg_kv_collect_func=f"{_HUNYUAN_IMAGE3_INPUT_PROCESSOR}.collect_cfg_kv_caches",
-            omni_kv_config={"need_recv_cache": True},
         ),
     ),
 )
