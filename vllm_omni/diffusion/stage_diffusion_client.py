@@ -117,7 +117,6 @@ class StageDiffusionClient:
         self.default_sampling_params = metadata.default_sampling_params
         self.custom_process_input_func = metadata.custom_process_input_func
         self.engine_input_source = metadata.engine_input_source
-        self.requires_multimodal_data = metadata.requires_multimodal_data
         self._proc = proc
         self._owns_process = proc is not None
 

@@ -322,13 +322,12 @@ def extract_stage_metadata(stage_config: Any) -> StageMetadata:
         cfg_kv_collect_func = getattr(importlib.import_module(_mod), _fn)
 
     if stage_type == "diffusion":
-        requires_multimodal_data = getattr(runtime_cfg, "requires_multimodal_data", False)
         return StageMetadata(
             stage_id=stage_id,
             stage_type="diffusion",
             engine_output_type=None,
             is_comprehension=False,
-            requires_multimodal_data=requires_multimodal_data,
+            requires_multimodal_data=False,
             engine_input_source=engine_input_source,
             final_output=final_output,
             final_output_type=final_output_type,

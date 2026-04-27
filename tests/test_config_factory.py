@@ -836,7 +836,6 @@ class TestDeployConfigLoading:
         assert s0.model_stage == "thinker"
         assert s0.yaml_engine_args["model_arch"] == "Qwen3OmniMoeForConditionalGeneration"
         assert s0.yaml_engine_args["engine_output_type"] == "latent"
-        assert s0.yaml_runtime["requires_multimodal_data"] is True
         assert s0.yaml_extras["default_sampling_params"]["detokenize"] is True
 
 

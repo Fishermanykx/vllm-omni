@@ -683,7 +683,7 @@ class Orchestrator:
                     self.stage_clients,
                     next_client.engine_input_source,
                     req_state.prompt,
-                    next_client.requires_multimodal_data,
+                    False,
                 )
                 _dt_ar2d = (_time.perf_counter() - _t_ar2d) * 1000
                 req_state.pipeline_timings["ar2diffusion_ms"] = _dt_ar2d
