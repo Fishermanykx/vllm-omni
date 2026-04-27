@@ -596,7 +596,7 @@ def run_headless(args: argparse.Namespace) -> None:
                 request_address=request_address,
                 response_address=response_address,
             )
-            complete_diffusion_handshake(proc, handshake_address)
+            complete_diffusion_handshake(proc, handshake_address, args.stage_init_timeout)
             proc.join()
             if proc.exitcode not in (None, 0):
                 raise RuntimeError(f"Diffusion stage {stage_id} exited with code {proc.exitcode}")
