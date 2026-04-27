@@ -18,6 +18,21 @@ CFG_TEXT_SUFFIX = "__cfg_text"
 _AR_TOKENIZER_CACHE: dict[str, Any] = {}
 
 
+def _first_source_image(mm_data: Any) -> Any:
+    """Get the first source image from common multimodal keys."""
+    if not isinstance(mm_data, dict):
+        return None
+
+    for key in ("image", "img2img", "images"):
+        image = mm_data.get(key)
+        if image is None:
+            continue
+        if isinstance(image, list):
+            return image[0] if image else None
+        return image
+    return None
+
+
 def ar2diffusion(
     stage_list: list[Any],
     engine_input_source: list[int],
@@ -101,14 +116,11 @@ def ar2diffusion(
         if use_system_prompt is not None:
             diffusion_input["use_system_prompt"] = use_system_prompt
 
-        mm_data = original_prompt.get("multi_modal_data")
-        if mm_data:
-            prompt_images = mm_data.get("image")
-            if prompt_images is None:
-                prompt_images = mm_data.get("images")
-            if prompt_images is not None:
-                diffusion_input["pil_image"] = prompt_images
-                diffusion_input["multi_modal_data"] = {"image": prompt_images}
+        if requires_multimodal_data:
+            prompt_image = _first_source_image(original_prompt.get("multi_modal_data"))
+            if prompt_image is not None:
+                diffusion_input["pil_image"] = prompt_image
+                diffusion_input["multi_modal_data"] = {"image": prompt_image}
 
         if hasattr(ar_output, "multimodal_output") and ar_output.multimodal_output:
             mm_output = ar_output.multimodal_output

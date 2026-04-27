@@ -798,6 +798,7 @@ def merge_pipeline_deploy(
         engine_args = _build_engine_args(ps, ds, pipeline, deploy, next_stage_proc)
         extras = _build_extras(ps, ds)
         runtime: dict[str, Any] = {"process": True}
+        runtime["requires_multimodal_data"] = ps.requires_multimodal_data
         if ds is not None:
             runtime["devices"] = ds.devices
 
