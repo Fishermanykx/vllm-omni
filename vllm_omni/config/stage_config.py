@@ -1022,7 +1022,6 @@ class StageConfigFactory:
                     deploy_cfg.pipeline,
                     cli_overrides,
                     deploy_config_path,
-                    cli_explicit_keys,
                 )
 
         # --- HF architecture fallback: some models report a generic
