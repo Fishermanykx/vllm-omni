@@ -15,6 +15,7 @@ Usage:
 
 import argparse
 import os
+from pathlib import Path
 
 from vllm_omni.diffusion.models.hunyuan_image3.system_prompt import (
     get_system_prompt,
@@ -72,12 +73,23 @@ def build_prompt(
     return "".join(parts)
 
 
-# Modality → default stage config
-_MODALITY_DEFAULT_CONFIG = {
-    "text2img": "hunyuan_image3_t2i.yaml",
-    "img2img": "hunyuan_image3_it2i.yaml",
-    "img2text": "hunyuan_image3_i2t.yaml",
-    "text2text": "hunyuan_image3_t2t.yaml",
+# Default deploy configs are absolute so this example works from any cwd.
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+_DEFAULT_DEPLOY_CONFIG = str(_REPO_ROOT / "vllm_omni" / "deploy" / "hunyuan_image3.yaml")
+_DEFAULT_AR_DEPLOY_CONFIG = str(_REPO_ROOT / "vllm_omni" / "deploy" / "hunyuan_image3_ar.yaml")
+
+_MODALITY_DEFAULT_DEPLOY_CONFIG = {
+    "text2img": _DEFAULT_DEPLOY_CONFIG,
+    "img2img": _DEFAULT_DEPLOY_CONFIG,
+    "img2text": _DEFAULT_AR_DEPLOY_CONFIG,
+    "text2text": _DEFAULT_AR_DEPLOY_CONFIG,
+}
+
+_MODALITY_MODE = {
+    "text2img": "text-to-image",
+    "img2img": "image-editing",
+    "img2text": "image-to-text",
+    "text2text": "text-to-text",
 }
 
 
@@ -152,9 +164,10 @@ def main():
     if args.deploy_config is not None and args.stage_configs_path is not None:
         raise ValueError("--deploy-config and --stage-configs-path are mutually exclusive.")
 
-    # Determine stage config
-    stage_configs_path = None if args.deploy_config is not None else args.stage_configs_path
-    stage_configs_path = stage_configs_path or _MODALITY_DEFAULT_CONFIG[args.modality]
+    deploy_config = args.deploy_config
+    stage_configs_path = args.stage_configs_path
+    if deploy_config is None and stage_configs_path is None:
+        deploy_config = _MODALITY_DEFAULT_DEPLOY_CONFIG[args.modality]
 
     # Build Omni
     omni_kwargs = {
@@ -163,12 +176,11 @@ def main():
         "init_timeout": args.init_timeout,
         "enforce_eager": args.enforce_eager,
     }
-    if args.deploy_config is not None:
-        omni_kwargs["deploy_config"] = args.deploy_config
+    if deploy_config is not None:
+        omni_kwargs["deploy_config"] = deploy_config
     else:
         omni_kwargs["stage_configs_path"] = stage_configs_path
-    if args.modality in ("text2img", "img2img"):
-        omni_kwargs["mode"] = "text-to-image"
+    omni_kwargs["mode"] = _MODALITY_MODE[args.modality]
 
     omni = Omni(**omni_kwargs)
 
@@ -230,8 +242,8 @@ def main():
     print("HunyuanImage-3.0 Generation Configuration:")
     print(f"  Model: {args.model}")
     print(f"  Modality: {args.modality}")
-    if args.deploy_config is not None:
-        print(f"  Deploy config: {args.deploy_config}")
+    if deploy_config is not None:
+        print(f"  Deploy config: {deploy_config}")
     else:
         print(f"  Stage config: {stage_configs_path}")
     print(f"  Num stages: {omni.num_stages}")

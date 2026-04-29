@@ -800,6 +800,7 @@ def merge_pipeline_deploy(
         runtime: dict[str, Any] = {"process": True}
         if ds is not None:
             runtime["devices"] = ds.devices
+        runtime["requires_multimodal_data"] = ps.requires_multimodal_data
 
         result.append(
             StageConfig(

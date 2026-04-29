@@ -497,16 +497,20 @@ def filter_stages(
             return stage_configs
 
         mode_to_stage_ids: dict[str, list[int]] = {}
+        mode_to_stage_overrides: dict[str, list[dict[str, Any]]] = {}
         if yaml_modes is not None:
             for entry in yaml_modes:
                 mode_name = None
                 stages = None
+                stage_overrides = None
                 if hasattr(entry, "mode") or hasattr(entry, "stages"):
                     mode_name = getattr(entry, "mode", None)
                     stages = getattr(entry, "stages", None)
+                    stage_overrides = getattr(entry, "stage_overrides", None)
                 elif isinstance(entry, dict):
                     mode_name = entry.get("mode")
                     stages = entry.get("stages")
+                    stage_overrides = entry.get("stage_overrides")
 
                 if mode_name is None or stages is None:
                     continue
@@ -517,6 +521,7 @@ def filter_stages(
                     stage_list = list(stages)
 
                 mode_to_stage_ids[str(mode_name)] = [int(sid) for sid in stage_list]
+                mode_to_stage_overrides[str(mode_name)] = _normalize_mode_stage_overrides(stage_overrides)
 
         # No modes section or empty mapping: use all stages and return early.
         active_mode: str | None = None
@@ -547,10 +552,74 @@ def filter_stages(
             )
             return stage_configs
 
+        _apply_mode_stage_overrides(filtered_stage_configs, mode_to_stage_overrides.get(active_mode, []))
         return filtered_stage_configs
     except Exception as e:
         logger.warning("Failed to apply mode-based stage filtering: %s", e)
         return stage_configs
+
+
+def _normalize_mode_stage_overrides(stage_overrides: Any) -> list[dict[str, Any]]:
+    if stage_overrides is None:
+        return []
+
+    if hasattr(stage_overrides, "items"):
+        result: list[dict[str, Any]] = []
+        for stage_id, override in stage_overrides.items():
+            override_dict = dict(_to_dict(override) or {})
+            override_dict.setdefault("stage_id", int(stage_id))
+            result.append(override_dict)
+        return result
+
+    result = []
+    for override in list(stage_overrides):
+        override_dict = dict(_to_dict(override) or {})
+        if "stage_id" in override_dict:
+            result.append(override_dict)
+    return result
+
+
+def _merge_config_mapping(target: Any, values: dict[str, Any]) -> Any:
+    if target is None:
+        target = create_config({})
+    for key, value in values.items():
+        target[key] = value
+    return target
+
+
+def _apply_mode_stage_overrides(stage_configs: list, stage_overrides: list[dict[str, Any]]) -> None:
+    if not stage_overrides:
+        return
+
+    by_id = {int(getattr(stage, "stage_id")): stage for stage in stage_configs}
+    for override in stage_overrides:
+        stage_id = override.get("stage_id")
+        if stage_id is None:
+            continue
+        stage = by_id.get(int(stage_id))
+        if stage is None:
+            continue
+
+        runtime_overrides = dict(_to_dict(override.get("runtime")) or {})
+        if "requires_multimodal_data" in override:
+            runtime_overrides["requires_multimodal_data"] = override["requires_multimodal_data"]
+        if runtime_overrides:
+            stage.runtime = _merge_config_mapping(getattr(stage, "runtime", None), runtime_overrides)
+
+        engine_overrides = dict(_to_dict(override.get("engine_args")) or {})
+        if engine_overrides:
+            stage.engine_args = _merge_config_mapping(getattr(stage, "engine_args", None), engine_overrides)
+
+        sampling_overrides = dict(_to_dict(override.get("default_sampling_params")) or {})
+        if sampling_overrides:
+            stage.default_sampling_params = _merge_config_mapping(
+                getattr(stage, "default_sampling_params", None), sampling_overrides
+            )
+
+        for key, value in override.items():
+            if key in {"stage_id", "runtime", "engine_args", "default_sampling_params", "requires_multimodal_data"}:
+                continue
+            stage[key] = value
 
 
 def load_and_resolve_stage_configs(
