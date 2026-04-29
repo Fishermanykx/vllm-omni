@@ -1,19 +1,31 @@
 # HunyuanImage-3.0-Instruct
 
-This example runs HunyuanImage-3.0-Instruct offline through the unified deploy
+This example runs HunyuanImage-3.0-Instruct offline with the unified deploy
 YAMLs under `vllm_omni/deploy/`.
 
-## Default Configs
+## Deploy Configs
 
-| File | Use case | Notes |
+| File | Topology | Default use |
 | :--- | :--- | :--- |
-| `vllm_omni/deploy/hunyuan_image3.yaml` | AR + DiT | Default for `text2img` and `img2img`. Uses `mode` to select text-to-image or image-editing. |
+| `vllm_omni/deploy/hunyuan_image3.yaml` | AR + DiT | Default for `text2img` and `img2img`. |
 | `vllm_omni/deploy/hunyuan_image3_ar.yaml` | AR only | Default for `img2text` and `text2text`. |
-| `vllm_omni/deploy/hunyuan_image3_dit.yaml` | DiT only | Standalone DiT deployment/inference. |
+| `vllm_omni/deploy/hunyuan_image3_dit.yaml` | DiT only | Standalone diffusion stage. Pass it explicitly with `--deploy-config`. |
+
+The example chooses a deploy config automatically when `--deploy-config` and
+`--stage-configs-path` are both omitted:
+
+| `--modality` | `mode` passed to Omni | Default deploy |
+| :--- | :--- | :--- |
+| `text2img` | `text-to-image` | `hunyuan_image3.yaml` |
+| `img2img` | `image-editing` | `hunyuan_image3.yaml` |
+| `img2text` | `image-to-text` | `hunyuan_image3_ar.yaml` |
+| `text2text` | `text-to-text` | `hunyuan_image3_ar.yaml` |
+
+`mode` filters the stages declared in the deploy YAML.
 
 ## Run Examples
 
-Text to image:
+Text to image, using the default AR + DiT deploy:
 
 ```bash
 python examples/offline_inference/hunyuan_image3/end2end.py \
@@ -22,7 +34,7 @@ python examples/offline_inference/hunyuan_image3/end2end.py \
   --prompts "A cute cat sitting on a windowsill watching the sunset"
 ```
 
-Image editing:
+Image editing, using the default AR + DiT deploy:
 
 ```bash
 python examples/offline_inference/hunyuan_image3/end2end.py \
@@ -32,7 +44,7 @@ python examples/offline_inference/hunyuan_image3/end2end.py \
   --prompts "Make the petals neon pink"
 ```
 
-Image to text:
+Image to text, using the AR-only deploy:
 
 ```bash
 python examples/offline_inference/hunyuan_image3/end2end.py \
@@ -42,7 +54,7 @@ python examples/offline_inference/hunyuan_image3/end2end.py \
   --prompts "Describe the content of the picture."
 ```
 
-Text to text:
+Text to text, using the AR-only deploy:
 
 ```bash
 python examples/offline_inference/hunyuan_image3/end2end.py \
@@ -51,7 +63,17 @@ python examples/offline_inference/hunyuan_image3/end2end.py \
   --prompts "What is the capital of France?"
 ```
 
-Override the deploy YAML explicitly:
+Standalone DiT, using the DiT-only deploy explicitly:
+
+```bash
+python examples/offline_inference/hunyuan_image3/end2end.py \
+  --model tencent/HunyuanImage-3.0-Instruct \
+  --modality text2img \
+  --deploy-config vllm_omni/deploy/hunyuan_image3_dit.yaml \
+  --prompts "A cinematic portrait of an astronaut in a greenhouse"
+```
+
+Override the default full AR + DiT deploy explicitly:
 
 ```bash
 python examples/offline_inference/hunyuan_image3/end2end.py \
@@ -66,15 +88,17 @@ python examples/offline_inference/hunyuan_image3/end2end.py \
 | Argument | Description |
 | :--- | :--- |
 | `--deploy-config` | Preferred config path for unified deploy YAMLs. |
-| `--stage-configs-path` | Legacy stage config path, kept only for compatibility. |
+| `--stage-configs-path` | Legacy stage config path, kept only for compatibility. Prefer `--deploy-config`. |
 | `--modality` | One of `text2img`, `img2img`, `img2text`, `text2text`. |
 | `--steps` | Number of diffusion inference steps for image generation. |
 | `--guidance-scale` | Classifier-free guidance scale for image generation. |
 | `--height`, `--width` | Output image size for `text2img`. |
+| `--bot-task` | Override the prompt task, for example `t2i_think` or `t2i_recaption`. |
+| `--sys-type` | Override the system prompt type, for example `en_unified` or `en_vanilla`. |
 
 ## Notes
 
-The unified AR+DiT deploy config enables AR-to-DiT KV cache reuse. Platform
-overrides for CUDA/NPU/XPU are folded into the deploy YAML, so the older
-HunyuanImage3 files under `model_executor/stage_configs/` and
-`platforms/*/stage_configs/` are no longer needed.
+- `hunyuan_image3_ar.yaml` is a 4-card AR-only text/comprehension deploy. It sets `engine_output_type: text`, `final_output_type: text`, and text sampling defaults.
+- `hunyuan_image3_dit.yaml` is a single-stage DiT deploy with `stage_id: 0`; it does not require stage 1 or a running AR stage.
+- The old HunyuanImage3 YAMLs under `model_executor/stage_configs/` and `platforms/*/stage_configs/` have been folded into the deploy YAMLs.
+- This PR does not keep the HunyuanImage3 AR-to-DiT KV reuse wiring. The deploy YAMLs describe the topology and platform settings only.
