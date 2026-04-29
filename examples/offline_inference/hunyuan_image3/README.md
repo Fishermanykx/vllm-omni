@@ -21,7 +21,22 @@ The example chooses a deploy config automatically when `--deploy-config` and
 | `img2text` | `image-to-text` | `hunyuan_image3_ar.yaml` |
 | `text2text` | `text-to-text` | `hunyuan_image3_ar.yaml` |
 
-`mode` filters the stages declared in the deploy YAML.
+`--modality` is an offline example convenience flag. It maps to the internal
+`mode` argument passed to `Omni(...)` by this script, and `mode` filters the
+stages declared in the deploy YAML.
+
+Online serving does not expose a `--modality` flag or accept `mode` as an API
+request field. Choose the deploy topology when starting the server with
+`--deploy-config`, then use the OpenAI-compatible endpoint and request shape for
+the scenario. The `modalities` request field is used by the chat completions
+path; the image endpoints infer the image task from the endpoint and payload.
+
+| Online scenario | Server deploy | Request |
+| :--- | :--- | :--- |
+| Text to image | `--deploy-config vllm_omni/deploy/hunyuan_image3.yaml` | `POST /v1/images/generations`, or `POST /v1/chat/completions` with `"modalities": ["image"]`. |
+| Image editing | `--deploy-config vllm_omni/deploy/hunyuan_image3.yaml` | `POST /v1/images/edits`. |
+| Image/text to text | `--deploy-config vllm_omni/deploy/hunyuan_image3_ar.yaml` | `POST /v1/chat/completions` for text output, for example with `"modalities": ["text"]`. |
+| DiT-only image generation | `--deploy-config vllm_omni/deploy/hunyuan_image3_dit.yaml` | `POST /v1/images/generations`. |
 
 ## Run Examples
 
@@ -89,7 +104,7 @@ python examples/offline_inference/hunyuan_image3/end2end.py \
 | :--- | :--- |
 | `--deploy-config` | Preferred config path for unified deploy YAMLs. |
 | `--stage-configs-path` | Legacy stage config path, kept only for compatibility. Prefer `--deploy-config`. |
-| `--modality` | One of `text2img`, `img2img`, `img2text`, `text2text`. |
+| `--modality` | Offline-only convenience flag. One of `text2img`, `img2img`, `img2text`, `text2text`. It selects prompt formatting, internal `mode`, and default deploy config for this script. Online serving uses `--deploy-config` plus the endpoint and, for chat completions, request `modalities` instead. |
 | `--steps` | Number of diffusion inference steps for image generation. |
 | `--guidance-scale` | Classifier-free guidance scale for image generation. |
 | `--height`, `--width` | Output image size for `text2img`. |
