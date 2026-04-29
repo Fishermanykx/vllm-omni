@@ -31,8 +31,6 @@ HUNYUAN_IMAGE3_PIPELINE = PipelineConfig(
             requires_multimodal_data=True,
             model_arch=_HUNYUAN_IMAGE3_MODEL_ARCH,
             engine_output_type="latent",
-            prompt_expand_func=f"{_HUNYUAN_IMAGE3_INPUT_PROCESSOR}.expand_cfg_prompts",
-            omni_kv_config={"need_send_cache": True},
         ),
         StagePipelineConfig(
             stage_id=1,
@@ -44,8 +42,6 @@ HUNYUAN_IMAGE3_PIPELINE = PipelineConfig(
             requires_multimodal_data=True,
             model_arch=_HUNYUAN_IMAGE3_MODEL_ARCH,
             custom_process_input_func=f"{_HUNYUAN_IMAGE3_INPUT_PROCESSOR}.ar2diffusion",
-            cfg_kv_collect_func=f"{_HUNYUAN_IMAGE3_INPUT_PROCESSOR}.collect_cfg_kv_caches",
-            omni_kv_config={"need_recv_cache": True},
         ),
     ),
 )
@@ -67,8 +63,6 @@ HUNYUAN_IMAGE3_AR_PIPELINE = PipelineConfig(
             requires_multimodal_data=True,
             model_arch=_HUNYUAN_IMAGE3_MODEL_ARCH,
             engine_output_type="latent",
-            prompt_expand_func=f"{_HUNYUAN_IMAGE3_INPUT_PROCESSOR}.expand_cfg_prompts",
-            omni_kv_config={"need_send_cache": True},
         ),
     ),
 )

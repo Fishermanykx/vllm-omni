@@ -1,5 +1,5 @@
 # HunyuanImage-3.0-Instruct deploy: AR (stage 0) + DiT (stage 1).
-# The base CUDA layout follows the existing 8-GPU AR->DiT KV-reuse config
+# The base CUDA layout follows the existing 8-GPU AR->DiT config
 # (4 GPUs for AR, 4 GPUs for DiT). Platform overrides below fold in the
 # verified NPU/XPU stage configs that previously lived under stage_configs/.
 pipeline: hunyuan_image3
@@ -45,10 +45,6 @@ stages:
       rope_parameters:
         mrope_section: [0, 32, 32]
         rope_type: default
-    omni_kv_config:
-      need_send_cache: true
-      kv_transfer_criteria:
-        type: prefill_finished
     default_sampling_params:
       temperature: 0.6
       top_p: 0.95
@@ -69,8 +65,6 @@ stages:
     cache_backend:
     cache_config:
     enable_cache_dit_summary: false
-    omni_kv_config:
-      need_recv_cache: true
     parallel_config:
       pipeline_parallel_size: 1
       data_parallel_size: 1
