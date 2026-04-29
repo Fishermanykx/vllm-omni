@@ -3,11 +3,6 @@
 # (4 GPUs for AR, 4 GPUs for DiT). Platform overrides below fold in the
 # verified NPU/XPU stage configs that previously lived under stage_configs/.
 pipeline: hunyuan_image3
-trust_remote_code: true
-distributed_executor_backend: mp
-enable_prefix_caching: false
-pipeline_parallel_size: 1
-async_chunk: false
 
 modes:
   - mode: text-to-text

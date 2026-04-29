@@ -3,8 +3,6 @@
 # Use this when AR and DiT are deployed as independent services. This file
 # resolves to stage 0 only, avoiding the default two-stage topology.
 pipeline: hunyuan_image3_ar
-distributed_executor_backend: mp
-
 async_chunk: false
 
 modes:
@@ -28,8 +26,6 @@ stages:
       rope_parameters:
         mrope_section: [0, 32, 32]
         rope_type: default
-    is_comprehension: true
-    engine_output_type: text
     final_output: true
     final_output_type: text
     requires_multimodal_data: true
@@ -37,7 +33,7 @@ stages:
       temperature: 0.0
       top_p: 0.95
       top_k: 1024
-      max_tokens: 2048
+      max_tokens: 1024
       stop_token_ids: [127957, 128026]
       detokenize: true
 
@@ -46,8 +42,8 @@ platforms:
     stages:
       - stage_id: 0
         gpu_memory_utilization: 0.75
-        devices: "0,1,2,3"
-        tensor_parallel_size: 4
+        devices: "0,1,2,3,4,5,6,7"
+        tensor_parallel_size: 8
 
   xpu:
     stages:

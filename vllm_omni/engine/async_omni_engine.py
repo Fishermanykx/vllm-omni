@@ -541,7 +541,6 @@ class AsyncOmniEngine:
         stage_cfg: Any,
         metadata: Any,
         omni_master_server: OmniMasterServer,
-        stage_init_timeout: int,
     ) -> StageDiffusionClient:
         """Launch a local diffusion stage on OmniMasterServer-allocated sockets."""
         proc = None
@@ -565,7 +564,7 @@ class AsyncOmniEngine:
                 request_address=request_address,
                 response_address=response_address,
             )
-            complete_diffusion_handshake(proc, handshake_address, stage_init_timeout)
+            complete_diffusion_handshake(proc, handshake_address)
             logger.info(
                 "[AsyncOmniEngine] Stage %s diffusion startup completed",
                 metadata.stage_id,
