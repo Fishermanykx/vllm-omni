@@ -365,20 +365,15 @@ class TestLoadAndResolveStageConfigs:
         config_path = tmp_path / "deploy.yaml"
         config_path.write_text(
             """
-modes:
-  - mode: text-to-text
-    stages: [0]
-    stage_overrides:
-      0:
-        engine_args:
-          engine_output_type: text
-        runtime:
-          requires_multimodal_data: false
-        is_comprehension: true
-        default_sampling_params:
-          detokenize: true
-          max_tokens: 2048
-""",
+            modes:
+            - mode: text-to-text
+                stages: [0]
+                stage_overrides:
+                0:
+                    requires_multimodal_data: false
+                    final_output: true
+                    final_output_type: text
+            """,
             encoding="utf-8",
         )
         stages = [
@@ -386,8 +381,8 @@ modes:
                 {
                     "stage_id": 0,
                     "runtime": {"requires_multimodal_data": True},
-                    "is_comprehension": False,
-                    "default_sampling_params": {"detokenize": False},
+                    "final_output": False,
+                    "final_output_type": None,
                 }
             )
         ]
@@ -395,11 +390,9 @@ modes:
         filtered = filter_stages(str(config_path), stages, {"mode": "text-to-text"})
 
         assert len(filtered) == 1
-        assert filtered[0].engine_args.engine_output_type == "text"
         assert filtered[0].runtime.requires_multimodal_data is False
-        assert filtered[0].is_comprehension is True
-        assert filtered[0].default_sampling_params.detokenize is True
-        assert filtered[0].default_sampling_params.max_tokens == 2048
+        assert filtered[0].final_output is True
+        assert filtered[0].final_output_type == "text"
 
 
 class TestLoadStageConfigsFromYaml:

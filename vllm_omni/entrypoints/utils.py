@@ -579,14 +579,6 @@ def _normalize_mode_stage_overrides(stage_overrides: Any) -> list[dict[str, Any]
     return result
 
 
-def _merge_config_mapping(target: Any, values: dict[str, Any]) -> Any:
-    if target is None:
-        target = create_config({})
-    for key, value in values.items():
-        target[key] = value
-    return target
-
-
 def _apply_mode_stage_overrides(stage_configs: list, stage_overrides: list[dict[str, Any]]) -> None:
     if not stage_overrides:
         return
@@ -600,25 +592,7 @@ def _apply_mode_stage_overrides(stage_configs: list, stage_overrides: list[dict[
         if stage is None:
             continue
 
-        runtime_overrides = dict(_to_dict(override.get("runtime")) or {})
-        if "requires_multimodal_data" in override:
-            runtime_overrides["requires_multimodal_data"] = override["requires_multimodal_data"]
-        if runtime_overrides:
-            stage.runtime = _merge_config_mapping(getattr(stage, "runtime", None), runtime_overrides)
-
-        engine_overrides = dict(_to_dict(override.get("engine_args")) or {})
-        if engine_overrides:
-            stage.engine_args = _merge_config_mapping(getattr(stage, "engine_args", None), engine_overrides)
-
-        sampling_overrides = dict(_to_dict(override.get("default_sampling_params")) or {})
-        if sampling_overrides:
-            stage.default_sampling_params = _merge_config_mapping(
-                getattr(stage, "default_sampling_params", None), sampling_overrides
-            )
-
         for key, value in override.items():
-            if key in {"stage_id", "runtime", "engine_args", "default_sampling_params", "requires_multimodal_data"}:
-                continue
             stage[key] = value
 
 
