@@ -11,8 +11,6 @@ stages:
     gpu_memory_utilization: 0.9
     enforce_eager: true
     devices: "0,1,2,3"
-    model_stage: diffusion
-    engine_output_type: image
     vae_use_slicing: false
     vae_use_tiling: false
     cache_backend:

@@ -22,8 +22,10 @@ The example chooses a deploy config automatically when `--deploy-config` and
 | `text2text` | `text-to-text` | `hunyuan_image3_ar.yaml` |
 
 `--modality` is an offline example convenience flag. It maps to the internal
-`mode` argument passed to `Omni(...)` by this script, and `mode` filters the
-stages declared in the deploy YAML.
+`mode` argument passed to `Omni(...)` by this script. HunyuanImage3 uses
+separate deploy YAMLs for AR + DiT, AR-only, and DiT-only topologies, so the
+stage topology is selected by the deploy file rather than by YAML mode
+overrides.
 
 Online serving does not expose a `--modality` flag or accept `mode` as an API
 request field. Choose the deploy topology when starting the server with

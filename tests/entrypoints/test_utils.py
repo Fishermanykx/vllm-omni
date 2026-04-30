@@ -361,19 +361,15 @@ class TestLoadAndResolveStageConfigs:
         assert len(stage_configs) == 1
         assert "dtype" in stage_configs[0]["engine_args"]
 
-    def test_filter_stages_applies_mode_stage_overrides(self, tmp_path):
+    def test_filter_stages_selects_mode_stages_without_mutating_stage_config(self, tmp_path):
         config_path = tmp_path / "deploy.yaml"
         config_path.write_text(
-            """
-            modes:
-            - mode: text-to-text
-                stages: [0]
-                stage_overrides:
-                0:
-                    requires_multimodal_data: false
-                    final_output: true
-                    final_output_type: text
-            """,
+            """modes:
+  - mode: text-to-text
+    stages: [0]
+  - mode: text-to-image
+    stages: [0, 1]
+""",
             encoding="utf-8",
         )
         stages = [
@@ -384,15 +380,24 @@ class TestLoadAndResolveStageConfigs:
                     "final_output": False,
                     "final_output_type": None,
                 }
-            )
+            ),
+            create_config(
+                {
+                    "stage_id": 1,
+                    "runtime": {"requires_multimodal_data": True},
+                    "final_output": True,
+                    "final_output_type": "image",
+                }
+            ),
         ]
 
         filtered = filter_stages(str(config_path), stages, {"mode": "text-to-text"})
 
         assert len(filtered) == 1
-        assert filtered[0].runtime.requires_multimodal_data is False
-        assert filtered[0].final_output is True
-        assert filtered[0].final_output_type == "text"
+        assert filtered[0].stage_id == 0
+        assert filtered[0].runtime.requires_multimodal_data is True
+        assert filtered[0].final_output is False
+        assert filtered[0].final_output_type is None
 
 
 class TestLoadStageConfigsFromYaml:

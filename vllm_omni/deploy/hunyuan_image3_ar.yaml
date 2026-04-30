@@ -5,13 +5,6 @@
 pipeline: hunyuan_image3_ar
 async_chunk: false
 
-modes:
-  - mode: text-to-text
-    stages: [0]
-    stage_overrides:
-      0:
-        requires_multimodal_data: false
-
 stages:
   - stage_id: 0
     max_num_seqs: 1
@@ -26,9 +19,6 @@ stages:
       rope_parameters:
         mrope_section: [0, 32, 32]
         rope_type: default
-    final_output: true
-    final_output_type: text
-    requires_multimodal_data: true
     default_sampling_params:
       temperature: 0.0
       top_p: 0.95
