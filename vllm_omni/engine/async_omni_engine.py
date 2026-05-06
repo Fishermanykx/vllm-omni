@@ -1332,6 +1332,7 @@ class AsyncOmniEngine:
             "max_num_seqs": kwargs.get("max_num_seqs") or 1,
             "parallel_config": parallel_config,
             "model_class_name": kwargs.get("model_class_name", None),
+            "additional_config": kwargs.get("additional_config", None),
             "step_execution": kwargs.get("step_execution", False),
             "vae_use_slicing": kwargs.get("vae_use_slicing", False),
             "vae_use_tiling": kwargs.get("vae_use_tiling", False),
@@ -1475,6 +1476,13 @@ class AsyncOmniEngine:
                         cfg.engine_args.enable_sleep_mode = global_sleep_mode
                 if getattr(cfg, "stage_type", None) != "diffusion":
                     continue
+                if not hasattr(cfg, "engine_args") or cfg.engine_args is None:
+                    cfg.engine_args = OmegaConf.create({})
+                additional_config = kwargs.get("additional_config")
+                if additional_config is not None:
+                    current_additional_config = getattr(cfg.engine_args, "additional_config", None)
+                    if current_additional_config in (None, {}):
+                        cfg.engine_args.additional_config = additional_config
                 if kwargs.get("lora_path") is not None:
                     if not hasattr(cfg.engine_args, "lora_path") or cfg.engine_args.lora_path is None:
                         cfg.engine_args.lora_path = kwargs["lora_path"]
