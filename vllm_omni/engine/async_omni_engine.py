@@ -1519,10 +1519,14 @@ class AsyncOmniEngine:
         return default_stage_cfg
 
     @staticmethod
-    def _strip_single_engine_args(kwargs: dict[str, Any]) -> dict[str, Any]:
+    def _strip_single_engine_args(
+        kwargs: dict[str, Any],
+        *,
+        keep_legacy_parallel: bool = True,
+    ) -> dict[str, Any]:
         """Remove parent ``EngineArgs`` fields from *kwargs*.
 
-        When ``stage_configs_path`` is set, per-stage engine args are defined
+        When a stage/deploy config is set, per-stage engine args are defined
         in the YAML.  Top-level single-engine fields (``compilation_config``,
         ``tensor_parallel_size``, …) must not leak into per-stage configs via
         the ``base_engine_args`` merge in ``load_stage_configs_from_yaml`` —
@@ -1535,17 +1539,20 @@ class AsyncOmniEngine:
         contracts this method enforces.
         """
         parent_fields: dict[str, dataclasses.Field] = {f.name: f for f in dataclasses.fields(EngineArgs)}
+        keep_keys = _PARENT_ARGS_KEEP
+        if not keep_legacy_parallel:
+            keep_keys = keep_keys - {"tensor_parallel_size"}
         result, overridden = strip_parent_engine_args(
             kwargs,
             parent_fields=parent_fields,
-            keep_keys=_PARENT_ARGS_KEEP,
+            keep_keys=keep_keys,
             strip_keys=_PARENT_ARGS_STRIP,
             no_warn_keys=_PARENT_ARGS_NO_WARN,
         )
 
         if overridden:
             logger.warning(
-                "stage_configs_path is set — the following top-level engine "
+                "stage/deploy config is set — the following top-level engine "
                 "args are ignored (per-stage YAML takes precedence): %s",
                 ", ".join(sorted(overridden)),
             )
@@ -1568,6 +1575,8 @@ class AsyncOmniEngine:
 
         if stage_configs_path is not None:
             base_kwargs = self._strip_single_engine_args(kwargs)
+        elif deploy_config_path is not None:
+            base_kwargs = self._strip_single_engine_args(kwargs, keep_legacy_parallel=False)
         else:
             base_kwargs = kwargs
 

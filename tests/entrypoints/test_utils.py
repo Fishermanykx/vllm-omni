@@ -402,6 +402,49 @@ class TestLoadAndResolveStageConfigs:
         assert stage_configs[1].runtime.num_replicas == 3
         assert stage_configs[1].runtime.devices == "1,2,3"
 
+    def test_online_deploy_config_strips_parent_engine_defaults(self, mocker: MockerFixture):
+        captured: dict[str, object] = {}
+
+        def fake_load_and_resolve_stage_configs(
+            model,
+            stage_configs_path,
+            kwargs,
+            default_stage_cfg_factory=None,
+            deploy_config_path=None,
+            stage_overrides=None,
+        ):
+            captured["model"] = model
+            captured["stage_configs_path"] = stage_configs_path
+            captured["kwargs"] = dict(kwargs)
+            captured["deploy_config_path"] = deploy_config_path
+            captured["stage_overrides"] = stage_overrides
+            return deploy_config_path, []
+
+        mocker.patch(
+            "vllm_omni.engine.async_omni_engine.load_and_resolve_stage_configs",
+            side_effect=fake_load_and_resolve_stage_configs,
+        )
+
+        engine = object.__new__(AsyncOmniEngine)
+        config_path, stage_configs = engine._resolve_stage_configs(
+            "dummy-model",
+            {
+                "deploy_config": "/tmp/deploy.yaml",
+                "stage_configs_path": None,
+                "tensor_parallel_size": 1,
+                "compilation_config": {"level": 3},
+                "worker_extension_cls": "vllm_omni.test.Extension",
+            },
+        )
+
+        assert config_path == "/tmp/deploy.yaml"
+        assert stage_configs == []
+        assert captured["stage_configs_path"] is None
+        assert captured["deploy_config_path"] == "/tmp/deploy.yaml"
+        assert "compilation_config" not in captured["kwargs"]
+        assert "tensor_parallel_size" not in captured["kwargs"]
+        assert captured["kwargs"]["worker_extension_cls"] == "vllm_omni.test.Extension"
+
     def test_filter_stages_selects_mode_stages_without_mutating_stage_config(self, tmp_path):
         config_path = tmp_path / "deploy.yaml"
         config_path.write_text(

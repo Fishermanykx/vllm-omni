@@ -1202,6 +1202,49 @@ class TestMingFlashOmniPipeline:
         assert s.hf_config_name == "talker_config"
         assert s.tokenizer_subdir == "talker/llm"
 
+    def test_explicit_deploy_config_pipeline_bypasses_model_type_detection(self, tmp_path, mocker):
+        pipeline_key = "unit_test_explicit_deploy"
+        _PIPELINE_REGISTRY[pipeline_key] = PipelineConfig(
+            model_type=pipeline_key,
+            model_arch="UnitTestModel",
+            stages=(
+                StagePipelineConfig(
+                    stage_id=0,
+                    model_stage="dit",
+                    execution_type=StageExecutionType.DIFFUSION,
+                    final_output=True,
+                    final_output_type="image",
+                ),
+            ),
+        )
+        deploy_path = tmp_path / "deploy.yaml"
+        deploy_path.write_text(
+            "pipeline: unit_test_explicit_deploy\n"
+            "stages:\n"
+            "  - stage_id: 0\n"
+            "    parallel_config:\n"
+            "      tensor_parallel_size: 4\n",
+            encoding="utf-8",
+        )
+        mocker.patch.object(
+            StageConfigFactory,
+            "_auto_detect_model_type",
+            return_value=("hunyuan_image_3_moe", None),
+        )
+
+        try:
+            stages = StageConfigFactory.create_from_model(
+                "dummy-model",
+                cli_overrides={},
+                deploy_config_path=str(deploy_path),
+            )
+        finally:
+            del _PIPELINE_REGISTRY[pipeline_key]
+
+        assert stages is not None
+        assert len(stages) == 1
+        assert stages[0].yaml_engine_args["parallel_config"]["tensor_parallel_size"] == 4
+
     def test_full_yaml_loads_and_merges(self):
         """deploy/ming_flash_omni.yaml parses and merges with the registered pipeline."""
         import vllm_omni.model_executor.models.ming_flash_omni.pipeline  # noqa: F401
