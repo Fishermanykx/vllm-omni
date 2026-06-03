@@ -612,6 +612,7 @@ class ImageInfo:
 
         self.add_timestep_token = kwargs.get("add_timestep_token", True)
         self.add_guidance_token = kwargs.get("add_guidance_token", False)
+        self.add_timestep_r_token = kwargs.get("add_timestep_r_token", False)
         self.use_front_boi_token = kwargs.get("use_front_boi_token", True)
         self.add_image_shape_token = kwargs.get("add_image_shape_token", True)
 
@@ -649,6 +650,7 @@ class ImageInfo:
                 token_length=self.image_token_length,
                 add_timestep_token=self.add_timestep_token,
                 add_guidance_token=self.add_guidance_token,
+                add_timestep_r_token=self.add_timestep_r_token,
                 use_front_boi_token=self.use_front_boi_token,
                 add_image_shape_token=self.add_image_shape_token,
                 base_size=self.base_size,
@@ -1425,7 +1427,7 @@ class HunyuanImage3ImageProcessor:
         )
         self.vision_encoder_processor = Siglip2ImageProcessorFast.from_dict(config.vit_processor)
 
-    def build_image_info(self, image_size):
+    def build_image_info(self, image_size, add_guidance_token=False, add_timestep_r_token=False):
         # parse image size (HxW, H:W, or <img_ratio_i>)
         if isinstance(image_size, str):
             if image_size.startswith("<img_ratio_"):
@@ -1461,6 +1463,8 @@ class HunyuanImage3ImageProcessor:
             token_height=token_height,
             base_size=base_size,
             ratio_index=ratio_idx,
+            add_guidance_token=add_guidance_token,
+            add_timestep_r_token=add_timestep_r_token,
         )
         return image_info
 
@@ -3090,6 +3094,13 @@ class HunyuanImage3Text2ImagePipeline(DiffusionPipeline):
                 else:
                     # Sequential CFG: double the batch
                     latent_model_input = torch.cat([latents] * cfg_factor)
+
+                if self.model.config.use_meanflow:
+                    r = self.scheduler.get_timestep_r(t)
+                    r_expand = r.repeat(latent_model_input.shape[0])
+                else:
+                    r_expand = None
+                model_kwargs["timesteps_r"] = r_expand
 
                 t_expand = t.repeat(latent_model_input.shape[0])
 

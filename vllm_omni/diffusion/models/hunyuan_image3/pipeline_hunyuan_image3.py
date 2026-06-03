@@ -54,6 +54,15 @@ BatchRaggedImages = torch.Tensor | list[torch.Tensor | list[torch.Tensor]]
 BatchRaggedTensor = torch.Tensor | list[torch.Tensor]
 
 
+class HunyuanImage3FlowMatchEulerDiscreteScheduler(FlowMatchEulerDiscreteScheduler):
+    def get_timestep_r(self, timestep: float | torch.FloatTensor):
+        if self.step_index is None:
+            self._init_step_index(timestep)
+        if self.step_index + 1 < len(self.timesteps):
+            return self.timesteps[self.step_index + 1]
+        return self.timesteps.new_zeros(())
+
+
 def default(val, d):
     return val if val is not None else d
 
@@ -145,6 +154,7 @@ def _image_info_to_payload(image_info: ImageInfo) -> dict[str, Any]:
         "ratio_index": _to_python_scalar(image_info.ratio_index),
         "add_timestep_token": image_info.add_timestep_token,
         "add_guidance_token": image_info.add_guidance_token,
+        "add_timestep_r_token": image_info.add_timestep_r_token,
         "use_front_boi_token": image_info.use_front_boi_token,
         "add_image_shape_token": image_info.add_image_shape_token,
     }
@@ -171,6 +181,7 @@ def _image_info_from_payload(payload: dict[str, Any]) -> ImageInfo:
         ratio_index=payload.get("ratio_index"),
         add_timestep_token=payload.get("add_timestep_token", True),
         add_guidance_token=payload.get("add_guidance_token", False),
+        add_timestep_r_token=payload.get("add_timestep_r_token", False),
         use_front_boi_token=payload.get("use_front_boi_token", True),
         add_image_shape_token=payload.get("add_image_shape_token", True),
     )
@@ -468,7 +479,7 @@ class HunyuanImage3Pipeline(
     def pipeline(self):
         if self._pipeline is None:
             # shift hard code
-            self.scheduler = FlowMatchEulerDiscreteScheduler(
+            self.scheduler = HunyuanImage3FlowMatchEulerDiscreteScheduler(
                 num_train_timesteps=1000,
                 shift=self.generation_config.flow_shift,
                 use_dynamic_shifting=False,
@@ -694,12 +705,12 @@ class HunyuanImage3Pipeline(
 
         return x
 
-    def ragged_final_layer(self, x, image_mask, timestep, token_h, token_w, first_step, extra_tokens: int = 0):
+    def ragged_final_layer(self, x, image_mask, timestep, token_h, token_w, first_step, num_special_tokens: int = None):
         bsz, seq_len, n_embd = x.shape
         if first_step:
             image_output = x.masked_select(image_mask.unsqueeze(-1).bool()).reshape(bsz, -1, n_embd)
         else:
-            image_output = x[:, 1 + extra_tokens :, :]
+            image_output = x[:, num_special_tokens:, :]
         timestep_emb = self.time_embed_2(timestep)
         pred = self.final_layer(image_output, timestep_emb, token_h, token_w)
         return pred
@@ -921,7 +932,14 @@ class HunyuanImage3Pipeline(
                     )
 
             if mode == "gen_image":
-                batch_gen_image_info = [self.image_processor.build_image_info(image_size) for _ in range(batch_size)]
+                batch_gen_image_info = [
+                    self.image_processor.build_image_info(
+                        image_size,
+                        add_guidance_token=self.hf_config.cfg_distilled,
+                        add_timestep_r_token=self.hf_config.use_meanflow,
+                    )
+                    for _ in range(batch_size)
+                ]
 
             if batch_cond_image_info is not None:
                 assert isinstance(batch_cond_image_info, list) and len(batch_cond_image_info) == batch_size, (
@@ -1146,6 +1164,7 @@ class HunyuanImage3Pipeline(
                 "query_lens": kwargs.get("query_lens"),
                 "seq_lens": kwargs.get("seq_lens"),
                 "num_image_tokens": kwargs.get("num_image_tokens"),
+                "num_special_tokens": kwargs.get("num_special_tokens"),
                 "ar_kv_reuse_len": kwargs.get("ar_kv_reuse_len", 0),
                 "full_attn_spans": kwargs.get("full_attn_spans"),
             }
@@ -1165,6 +1184,11 @@ class HunyuanImage3Pipeline(
             "mode": mode,
             "custom_pos_emb": model_kwargs["custom_pos_emb"],
             "num_image_tokens": model_kwargs["num_image_tokens"],
+            "num_special_tokens": model_kwargs["num_special_tokens"],
+            "guidance": model_kwargs.get("guidance"),
+            "guidance_scatter_index": model_kwargs.get("guidance_scatter_index"),
+            "timesteps_r": model_kwargs.get("timesteps_r"),
+            "timesteps_r_scatter_index": model_kwargs.get("timesteps_r_scatter_index"),
         }
         if "full_attn_spans" in model_kwargs:
             updated_model_kwargs["full_attn_spans"] = model_kwargs["full_attn_spans"]
@@ -1193,15 +1217,24 @@ class HunyuanImage3Pipeline(
                 bsz, seq_len = image_mask.shape
                 offset = model_kwargs.get("ar_kv_reuse_offset", 0)  # should be an absolute position.
                 index = torch.arange(offset, offset + seq_len, device=image_mask.device).unsqueeze(0).repeat(bsz, 1)
-                position_ids = index.masked_select(image_mask.bool()).reshape(bsz, -1)
-                timestep_position_ids = index[
-                    torch.arange(bsz), model_kwargs["gen_timestep_scatter_index"][:, -1]
-                ].unsqueeze(-1)
-                updated_model_kwargs["position_ids"] = torch.cat([timestep_position_ids, position_ids], dim=1)
+                image_position_ids = index.masked_select(image_mask.bool()).reshape(bsz, -1)
+                special_position_ids = [
+                    index[torch.arange(bsz), model_kwargs["gen_timestep_scatter_index"][:, -1]].unsqueeze(-1)
+                ]
+                if model_kwargs.get("guidance_scatter_index") is not None:
+                    special_position_ids.append(
+                        index[torch.arange(bsz), model_kwargs["guidance_scatter_index"][:, -1]].unsqueeze(-1)
+                    )
+                if model_kwargs.get("timesteps_r_scatter_index") is not None:
+                    special_position_ids.append(
+                        index[torch.arange(bsz), model_kwargs["timesteps_r_scatter_index"][:, -1]].unsqueeze(-1)
+                    )
+                special_position_ids = torch.cat(special_position_ids, dim=1)
+                updated_model_kwargs["position_ids"] = torch.cat([special_position_ids, image_position_ids], dim=1)
 
                 # attention mask
                 mask_list = []
-                current_starts = timestep_position_ids.reshape(-1)
+                current_starts = special_position_ids[:, 0]
                 max_current_start = int(current_starts.max().item())
                 for attention_mask_i, position_ids_i, current_start_i in zip(
                     model_kwargs["attention_mask"], updated_model_kwargs["position_ids"], current_starts
@@ -1253,12 +1286,12 @@ class HunyuanImage3Pipeline(
                 raise ValueError("`batch_gen_image_info` should be provided when `mode` is `gen_image`.")
 
             image_info: ImageInfo = batch_gen_image_info[0]
-            num_image_tokens = (
-                image_info.image_token_length
-                + (1 if image_info.add_timestep_token else 0)
+            kwargs["num_image_tokens"] = image_info.image_token_length
+            kwargs["num_special_tokens"] = (
+                (1 if image_info.add_timestep_token else 0)
                 + (1 if image_info.add_guidance_token else 0)
+                + (1 if image_info.add_timestep_r_token else 0)
             )
-            kwargs["num_image_tokens"] = num_image_tokens
             # 50 and 5.0 hard code
             results = self.pipeline(
                 batch_size=len(batch_gen_image_info),
@@ -1312,6 +1345,7 @@ class HunyuanImage3Pipeline(
         query_lens: list[int] | None = None,
         seq_lens: list[int] | None = None,
         num_image_tokens: int | None = None,
+        num_special_tokens: int | None = None,
         uncond_cfg_prefill: bool = False,
         ar_kv_reuse_len: int = 0,
         full_attn_spans: list[list[tuple[int, int]]] | None = None,
@@ -1358,7 +1392,6 @@ class HunyuanImage3Pipeline(
             ],
         )
         custom_pos_emb = self.get_pos_emb(custom_pos_emb, position_ids)
-        extra_tokens = 0
 
         if input_ids is not None:
             inputs_embeds = self.model.embed_tokens(input_ids)
@@ -1490,7 +1523,7 @@ class HunyuanImage3Pipeline(
             )
             hidden_states = hidden_states.reshape(bsz, seq_len, n_embd)
             diffusion_prediction = self.ragged_final_layer(
-                hidden_states, image_mask, timestep, token_h, token_w, first_step, extra_tokens
+                hidden_states, image_mask, timestep, token_h, token_w, first_step, num_special_tokens
             )
 
         if not return_dict:
