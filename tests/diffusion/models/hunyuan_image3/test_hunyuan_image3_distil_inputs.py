@@ -23,6 +23,7 @@ class MockHunyuanImage3Pipeline:
     )
 
     prepare_inputs_for_generation = _Real.prepare_inputs_for_generation
+    _update_model_kwargs_for_generation = _Real._update_model_kwargs_for_generation
 
 
 class TestPrepareInputsForGenerationDistilled:
@@ -52,6 +53,7 @@ class TestPrepareInputsForGenerationDistilled:
             "query_lens": [10],
             "seq_lens": [100],
             "num_image_tokens": 4096,
+            "num_special_tokens": 3,
             "ar_kv_reuse_len": 0,
             "full_attn_spans": None,
             "use_cache": True,
@@ -153,6 +155,49 @@ class TestPrepareInputsForGenerationDistilled:
         assert "timesteps_r_scatter_index" in model_inputs
         assert model_inputs["timesteps_r_scatter_index"] is not None
         assert torch.equal(model_inputs["timesteps_r_scatter_index"], kwargs["timesteps_r_scatter_index"])
+
+
+    def test_num_special_tokens_passed_to_model_inputs(self):
+        """Test that num_special_tokens is passed through."""
+        kwargs = self._create_mock_kwargs(include_distilled_params=True)
+        input_ids = torch.tensor([[1, 2, 3]])
+        attention_mask = torch.ones(1, 3)
+
+        model_inputs = self.pipeline.prepare_inputs_for_generation(
+            input_ids=input_ids,
+            past_key_values=None,
+            attention_mask=attention_mask,
+            inputs_embeds=None,
+            tokenizer_output=None,
+            batch_gen_image_info=None,
+            generator=None,
+            **kwargs,
+        )
+
+        assert "num_special_tokens" in model_inputs
+        assert model_inputs["num_special_tokens"] == kwargs["num_special_tokens"]
+
+    def test_decode_update_keeps_all_special_token_positions(self):
+        """Test decode step uses timestep, guidance, and timestep_r positions."""
+        model_kwargs = self._create_mock_kwargs(include_distilled_params=True)
+        model_kwargs.update(
+            {
+                "tokenizer_output": object(),
+                "attention_mask": torch.ones(1, 1, 7, 7, dtype=torch.bool),
+                "image_mask": torch.tensor([[False, False, False, False, True, True, True]]),
+                "gen_timestep_scatter_index": torch.tensor([[1]]),
+                "guidance_scatter_index": torch.tensor([[2]]),
+                "timesteps_r_scatter_index": torch.tensor([[3]]),
+            }
+        )
+
+        updated = self.pipeline._update_model_kwargs_for_generation({}, model_kwargs)
+
+        assert torch.equal(updated["position_ids"], torch.tensor([[1, 2, 3, 4, 5, 6]]))
+        assert updated["num_special_tokens"] == 3
+        assert updated["guidance_scatter_index"] is model_kwargs["guidance_scatter_index"]
+        assert updated["timesteps_r_scatter_index"] is model_kwargs["timesteps_r_scatter_index"]
+        assert updated["attention_mask"].shape == (1, 1, 6, 7)
 
     def test_distilled_params_none_when_not_provided(self):
         """Test that distilled params are None when not provided."""
