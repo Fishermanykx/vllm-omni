@@ -156,7 +156,6 @@ class TestPrepareInputsForGenerationDistilled:
         assert model_inputs["timesteps_r_scatter_index"] is not None
         assert torch.equal(model_inputs["timesteps_r_scatter_index"], kwargs["timesteps_r_scatter_index"])
 
-
     def test_num_special_tokens_passed_to_model_inputs(self):
         """Test that num_special_tokens is passed through."""
         kwargs = self._create_mock_kwargs(include_distilled_params=True)
