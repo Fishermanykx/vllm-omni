@@ -696,12 +696,12 @@ class HunyuanImage3Pipeline(
 
         return x
 
-    def ragged_final_layer(self, x, image_mask, timestep, token_h, token_w, first_step):
+    def ragged_final_layer(self, x, image_mask, timestep, token_h, token_w, first_step, extra_tokens: int = 0):
         bsz, seq_len, n_embd = x.shape
         if first_step:
             image_output = x.masked_select(image_mask.unsqueeze(-1).bool()).reshape(bsz, -1, n_embd)
         else:
-            image_output = x[:, 1:, :]
+            image_output = x[:, 1 + extra_tokens :, :]
         timestep_emb = self.time_embed_2(timestep)
         pred = self.final_layer(image_output, timestep_emb, token_h, token_w)
         return pred
@@ -1360,6 +1360,7 @@ class HunyuanImage3Pipeline(
             ],
         )
         custom_pos_emb = self.get_pos_emb(custom_pos_emb, position_ids)
+        extra_tokens = 0
 
         if input_ids is not None:
             inputs_embeds = self.model.embed_tokens(input_ids)
@@ -1491,7 +1492,7 @@ class HunyuanImage3Pipeline(
             )
             hidden_states = hidden_states.reshape(bsz, seq_len, n_embd)
             diffusion_prediction = self.ragged_final_layer(
-                hidden_states, image_mask, timestep, token_h, token_w, first_step
+                hidden_states, image_mask, timestep, token_h, token_w, first_step, extra_tokens
             )
 
         if not return_dict:
