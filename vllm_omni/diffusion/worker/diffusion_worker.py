@@ -724,33 +724,16 @@ class WorkerProc:
 
     def return_result(self, output: Any):
         """Reply to client, only on rank 0."""
-        print(
-            f"[HY-DBG] return_result enter gpu_id={self.gpu_id} "
-            f"has_result_mq={self.result_mq is not None} output_type={type(output)} "
-            f"payload_type={type(getattr(output, 'output', None))}",
-            flush=True,
-        )
         if self.result_mq is not None:
             if isinstance(output, OmniACK):
-                print(f"[HY-DBG] before enqueue ACK gpu_id={self.gpu_id}", flush=True)
                 self.result_mq.enqueue(output)
-                print(f"[HY-DBG] after enqueue ACK gpu_id={self.gpu_id}", flush=True)
                 return
             try:
-                print(f"[HY-DBG] before pack_diffusion_output_shm gpu_id={self.gpu_id}", flush=True)
                 pack_diffusion_output_shm(output)
-                print(
-                    f"[HY-DBG] after pack_diffusion_output_shm gpu_id={self.gpu_id} "
-                    f"payload_type={type(getattr(output, 'output', None))}",
-                    flush=True,
-                )
             except Exception as e:
-                print(f"[HY-DBG] pack_diffusion_output_shm exception gpu_id={self.gpu_id} err={repr(e)}", flush=True)
                 if hasattr(output, "output"):
                     logger.warning("SHM pack failed for model output: %s", e)
-            print(f"[HY-DBG] before result_mq.enqueue gpu_id={self.gpu_id}", flush=True)
             self.result_mq.enqueue(output)
-            print(f"[HY-DBG] after result_mq.enqueue gpu_id={self.gpu_id}", flush=True)
 
     def recv_message(self):
         """Receive messages from broadcast queue."""
@@ -772,17 +755,7 @@ class WorkerProc:
 
         try:
             # Use execute_method from WorkerWrapperBase for consistent method resolution
-            print(
-                f"[HY-DBG] execute_rpc before execute_method gpu_id={self.gpu_id} "
-                f"method={method} should_reply={should_reply}",
-                flush=True,
-            )
             result = self.worker.execute_method(method, *args, **kwargs)
-            print(
-                f"[HY-DBG] execute_rpc after execute_method gpu_id={self.gpu_id} "
-                f"result_type={type(result)} should_reply={should_reply}",
-                flush=True,
-            )
             return result, should_reply
         except Exception as e:
             logger.error(f"Error executing RPC: {e}", exc_info=True)
@@ -821,17 +794,9 @@ class WorkerProc:
             # Route message based on type
             elif isinstance(msg, dict) and msg.get("type") == "rpc":
                 try:
-                    print(f"[HY-DBG] worker before execute_rpc gpu_id={self.gpu_id}", flush=True)
                     result, should_reply = self.execute_rpc(msg)
-                    print(
-                        f"[HY-DBG] worker after execute_rpc gpu_id={self.gpu_id} "
-                        f"should_reply={should_reply} result_type={type(result)}",
-                        flush=True,
-                    )
                     if should_reply:
-                        print(f"[HY-DBG] worker before return_result rpc gpu_id={self.gpu_id}", flush=True)
                         self.return_result(result)
-                        print(f"[HY-DBG] worker after return_result rpc gpu_id={self.gpu_id}", flush=True)
                 except Exception as e:
                     logger.error(f"Error processing RPC: {e}", exc_info=True)
                     if self.result_mq is not None:
@@ -845,13 +810,7 @@ class WorkerProc:
             else:
                 # Handle generation request
                 try:
-                    print(f"[HY-DBG] worker before execute_model gpu_id={self.gpu_id}", flush=True)
                     output = self.worker.execute_model(msg, self.od_config)
-                    print(
-                        f"[HY-DBG] worker after execute_model gpu_id={self.gpu_id} "
-                        f"output_type={type(output)} payload_type={type(getattr(output, 'output', None))}",
-                        flush=True,
-                    )
                 except Exception as e:
                     logger.error(
                         f"Error executing forward in event loop: {e}",

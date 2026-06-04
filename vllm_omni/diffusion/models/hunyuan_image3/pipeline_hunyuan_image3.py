@@ -998,7 +998,7 @@ class HunyuanImage3Pipeline(
             rope_image_info.append(list(zip(image_slices, image_shapes)))
         return rope_image_info
 
-    def vae_encode(self, image, cfg_factor=1):
+    def vae_encode(self, image, cfg_factor=1, generator=None):
         config = self.vae.config
 
         if image.ndim == 3:
@@ -1013,11 +1013,7 @@ class HunyuanImage3Pipeline(
             if isinstance(vae_encode_result, torch.Tensor):
                 latents = vae_encode_result
             else:
-                # Match HunyuanImage-3's cond encode path: sample the
-                # posterior, but use a fixed generator so repeated online
-                # requests are deterministic.
-                _cond_vae_gen = torch.Generator(device=image.device).manual_seed(0)
-                latents = vae_encode_result.latent_dist.sample(_cond_vae_gen)
+                latents = vae_encode_result.latent_dist.sample(generator)
             if hasattr(config, "shift_factor") and config.shift_factor:
                 latents.sub_(config.shift_factor)
             if hasattr(config, "scaling_factor") and config.scaling_factor:
@@ -1040,6 +1036,7 @@ class HunyuanImage3Pipeline(
         self,
         batch_cond_image_info_list: list[list[JointImageInfo]],
         cfg_factor: int = 1,
+        generator=None,
     ):
         # VAE encode one by one, as we assume cond images have different sizes
         batch_cond_vae_images, batch_cond_t, batch_cond_vit_images = [], [], []
@@ -1048,6 +1045,7 @@ class HunyuanImage3Pipeline(
             for image_info in cond_image_info_list:
                 cond_t_, cond_vae_image_ = self.vae_encode(
                     image_info.vae_image_info.image_tensor.to(self.device),
+                    generator=generator,
                 )
                 cond_vit_image_list.append(image_info.vision_image_info.image_tensor)
                 cond_vae_image_list.append(cond_vae_image_.squeeze(0))
@@ -1250,7 +1248,7 @@ class HunyuanImage3Pipeline(
         # 4. Encode conditional images
         if batch_cond_image_info is not None and len(batch_cond_image_info[0]) > 0:
             cond_vae_images, cond_timestep, cond_vit_images = self._encode_cond_image(
-                batch_cond_image_info, cfg_factor[mode]
+                batch_cond_image_info, cfg_factor[mode], generator=generator
             )
             vit_kwargs = {"spatial_shapes": [], "attention_mask": []}
             for cond_image_info in batch_cond_image_info:
@@ -1894,19 +1892,10 @@ class HunyuanImage3Pipeline(
 
         model_inputs.update(ar_kv_kwargs)
 
-        _rank = torch.distributed.get_rank() if torch.distributed.is_initialized() else -1
-        print(f"[HY-DBG] hy pipeline before _generate rank={_rank}", flush=True)
         outputs = self._generate(**model_inputs, **kwargs)
-        print(
-            f"[HY-DBG] hy pipeline after _generate rank={_rank} "
-            f"outputs_type={type(outputs)} len={len(outputs) if hasattr(outputs, '__len__') else None} "
-            f"output0_type={type(outputs[0]) if hasattr(outputs, '__len__') and len(outputs) > 0 else None}",
-            flush=True,
-        )
         custom_output = {}
         if any(t is not None for t in cot_text_list):
             custom_output["ar_generated_text"] = cot_text_list[0] if len(cot_text_list) == 1 else cot_text_list
-        print(f"[HY-DBG] hy pipeline before DiffusionOutput return rank={_rank}", flush=True)
         return DiffusionOutput(
             output=outputs[0],
             custom_output=custom_output,

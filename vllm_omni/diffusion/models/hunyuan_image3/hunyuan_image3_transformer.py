@@ -3202,50 +3202,18 @@ class HunyuanImage3Text2ImagePipeline(DiffusionPipeline):
             latents = latents.unsqueeze(2)
 
         with torch.autocast(device_type=self.device.type, dtype=torch.float16, enabled=True):
-            _rank = torch.distributed.get_rank() if torch.distributed.is_initialized() else -1
-            print(
-                f"[HY-DBG] before vae.decode rank={_rank} latents={tuple(latents.shape)} "
-                f"device={latents.device} dtype={latents.dtype}",
-                flush=True,
-            )
             image = self.vae.decode(latents, return_dict=False, generator=generator)[0]
-            print(
-                f"[HY-DBG] after vae.decode rank={_rank} image_type={type(image)} "
-                f"image_shape={getattr(image, 'shape', None)}",
-                flush=True,
-            )
 
-        print(
-            f"[HY-DBG] before temporal squeeze rank={_rank} image_type={type(image)} "
-            f"image_shape={getattr(image, 'shape', None)}",
-            flush=True,
-        )
         if hasattr(self.vae, "ffactor_temporal"):
             assert image.shape[2] == 1, "image should have shape [B, C, T, H, W] and T should be 1"
             image = image.squeeze(2)
-        print(
-            f"[HY-DBG] after temporal squeeze rank={_rank} image_shape={getattr(image, 'shape', None)}",
-            flush=True,
-        )
 
         do_denormalize = [True] * image.shape[0]
-        print(
-            f"[HY-DBG] before image_processor.postprocess rank={_rank} output_type={output_type} "
-            f"image_shape={tuple(image.shape)} device={image.device} dtype={image.dtype}",
-            flush=True,
-        )
         image = self.image_processor.postprocess(image, output_type=output_type, do_denormalize=do_denormalize)
-        print(
-            f"[HY-DBG] after image_processor.postprocess rank={_rank} type={type(image)} "
-            f"len={len(image) if hasattr(image, '__len__') else None}",
-            flush=True,
-        )
 
         if not return_dict:
-            print(f"[HY-DBG] return tuple from transformer pipeline rank={_rank}", flush=True)
             return (image,)
 
-        print(f"[HY-DBG] return output object from transformer pipeline rank={_rank}", flush=True)
         return HunyuanImage3Text2ImagePipelineOutput(samples=image)
 
 
