@@ -648,7 +648,7 @@ class HunyuanImage3Pipeline(
         self.hf_config = get_config(od_config.model, trust_remote_code=True)
         super().__init__(self.hf_config)
         # update diffusion config
-        self.generation_config = GenerationConfig.from_pretrained(od_config.model)
+        self.generation_config = GenerationConfig.from_pretrained(od_config.model, trust_remote_code=True)
         self.od_config = od_config
         self.weights_sources = [
             DiffusersPipelineLoader.ComponentSource(
