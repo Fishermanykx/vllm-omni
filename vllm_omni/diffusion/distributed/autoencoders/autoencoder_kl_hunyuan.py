@@ -13,6 +13,9 @@ from vllm_omni.diffusion.distributed.autoencoders.distributed_vae_executor impor
     TileTask,
 )
 from vllm_omni.diffusion.models.hunyuan_image3.autoencoder import AutoencoderKLConv3D
+from vllm_omni.diffusion.models.hunyuan_image3.autoencoder_kl_3d_online import (
+    AutoencoderKLConv3D as HunyuanOnlineAutoencoderKLConv3D,
+)
 
 logger = init_logger(__name__)
 
@@ -145,55 +148,40 @@ class DistributedAutoencoderKLHunyuan(AutoencoderKLConv3D, DistributedVaeMixin):
         )
 
 
-class DistributedAutoencoderKLHunyuanOnline(DistributedAutoencoderKLHunyuan):
+class DistributedAutoencoderKLHunyuanOnline(HunyuanOnlineAutoencoderKLConv3D, DistributedVaeMixin):
     """HunyuanImage-online VAE backend.
 
-    The customer online package ships the same 3D KL autoencoder architecture
-    with a different tiling blend default. Keep it as an opt-in backend so the
-    existing HunyuanImage3 behavior remains unchanged.
+    This backend intentionally inherits the migrated customer
+    ``autoencoder_kl_3d.py`` implementation instead of the default
+    HunyuanImage3 VAE implementation, so the online backend matches the
+    external HunyuanImage-online VAE source.
     """
-
-    online_tile_overlap_factor = 0.125
-
-    def __init__(
-        self,
-        in_channels: int,
-        out_channels: int,
-        latent_channels: int,
-        block_out_channels: tuple[int, ...],
-        layers_per_block: int,
-        ffactor_spatial: int,
-        ffactor_temporal: int,
-        sample_size: int,
-        sample_tsize: int,
-        scaling_factor: float | None = None,
-        shift_factor: float | None = None,
-        downsample_match_channel: bool = True,
-        upsample_match_channel: bool = True,
-        only_encoder: bool = False,
-        only_decoder: bool = False,
-    ) -> None:
-        super().__init__(
-            in_channels=in_channels,
-            out_channels=out_channels,
-            latent_channels=latent_channels,
-            block_out_channels=block_out_channels,
-            layers_per_block=layers_per_block,
-            ffactor_spatial=ffactor_spatial,
-            ffactor_temporal=ffactor_temporal,
-            sample_size=sample_size,
-            sample_tsize=sample_tsize,
-            scaling_factor=scaling_factor,
-            shift_factor=shift_factor,
-            downsample_match_channel=downsample_match_channel,
-            upsample_match_channel=upsample_match_channel,
-            only_encoder=only_encoder,
-            only_decoder=only_decoder,
-        )
-        self.tile_overlap_factor = self.online_tile_overlap_factor
 
     @classmethod
     def from_config(cls, config: Any, **kwargs: Any):
         model = super().from_config(config, **kwargs)
-        model.tile_overlap_factor = cls.online_tile_overlap_factor
+        model.init_distributed()
         return model
+
+    @classmethod
+    def from_pretrained(cls, *args: Any, **kwargs: Any):
+        model = super().from_pretrained(*args, **kwargs)
+        model.init_distributed()
+        return model
+
+    @property
+    def use_tiling(self) -> bool:
+        return self.use_spatial_tiling
+
+    @use_tiling.setter
+    def use_tiling(self, use_tiling: bool) -> None:
+        self.use_spatial_tiling = use_tiling
+
+    tile_split = DistributedAutoencoderKLHunyuan.tile_split
+    tile_exec = DistributedAutoencoderKLHunyuan.tile_exec
+    tile_merge = DistributedAutoencoderKLHunyuan.tile_merge
+    encode_tile_split = DistributedAutoencoderKLHunyuan.encode_tile_split
+    encode_tile_exec = DistributedAutoencoderKLHunyuan.encode_tile_exec
+    encode_tile_merge = DistributedAutoencoderKLHunyuan.encode_tile_merge
+    spatial_tiled_encode = DistributedAutoencoderKLHunyuan.spatial_tiled_encode
+    spatial_tiled_decode = DistributedAutoencoderKLHunyuan.spatial_tiled_decode

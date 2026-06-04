@@ -9,6 +9,9 @@ from vllm_omni.diffusion.distributed.autoencoders.autoencoder_kl_hunyuan import 
     DistributedAutoencoderKLHunyuan,
     DistributedAutoencoderKLHunyuanOnline,
 )
+from vllm_omni.diffusion.models.hunyuan_image3.autoencoder_kl_3d_online import (
+    AutoencoderKLConv3D as HunyuanOnlineAutoencoderKLConv3D,
+)
 from vllm_omni.diffusion.models.hunyuan_image3.pipeline_hunyuan_image3 import (
     _get_hunyuan_vae_backend,
 )
@@ -62,3 +65,4 @@ def test_hunyuan_online_vae_keeps_customer_tiling_overlap():
 
     assert default_vae.tile_overlap_factor == 0.25
     assert online_vae.tile_overlap_factor == 0.125
+    assert isinstance(online_vae, HunyuanOnlineAutoencoderKLConv3D)
