@@ -325,10 +325,19 @@ class DiffusionModelRunner(OmniConnectorModelRunnerMixin):
 
             with set_forward_context(vllm_config=self.vllm_config, omni_diffusion_config=self.od_config):
                 with record_function("pipeline_forward"):
+                    _rank = torch.distributed.get_rank() if torch.distributed.is_initialized() else -1
+                    print(f"[HY-DBG] runner before pipeline.forward rank={_rank}", flush=True)
                     output = self.pipeline.forward(req)
+                    print(
+                        f"[HY-DBG] runner after pipeline.forward rank={_rank} "
+                        f"output_type={type(output)} payload_type={type(getattr(output, 'output', None))}",
+                        flush=True,
+                    )
 
             if is_primary:
+                print(f"[HY-DBG] runner before record_peak_memory rank={_rank}", flush=True)
                 self._record_peak_memory(output)
+                print(f"[HY-DBG] runner after record_peak_memory rank={_rank}", flush=True)
 
             # Log prompt-embed cache activity (hits/misses accumulate across requests).
             if is_primary and self.prompt_embed_cache is not None:

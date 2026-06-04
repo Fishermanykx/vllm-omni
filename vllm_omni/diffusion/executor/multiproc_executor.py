@@ -269,12 +269,18 @@ class MultiprocDiffusionExecutor(DiffusionExecutor):
         }
 
         try:
+            print("[HY-DBG] executor before broadcast enqueue", flush=True)
             self._broadcast_mq.enqueue(rpc_request)
+            print("[HY-DBG] executor after broadcast enqueue before result dequeue", flush=True)
             response = self._result_mq.dequeue()
+            print(f"[HY-DBG] executor after result dequeue response_type={type(response)}", flush=True)
 
             try:
+                print("[HY-DBG] executor before unpack_diffusion_output_shm", flush=True)
                 unpack_diffusion_output_shm(response)
+                print("[HY-DBG] executor after unpack_diffusion_output_shm", flush=True)
             except Exception as e:
+                print(f"[HY-DBG] executor unpack exception err={repr(e)}", flush=True)
                 logger.warning("SHM unpack failed (data may already be inline): %s", e)
 
             if isinstance(response, dict) and response.get("status") == "error":

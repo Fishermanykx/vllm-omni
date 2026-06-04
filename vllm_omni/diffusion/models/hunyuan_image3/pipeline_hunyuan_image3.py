@@ -1632,10 +1632,19 @@ class HunyuanImage3Pipeline(
 
         model_inputs.update(ar_kv_kwargs)
 
+        _rank = torch.distributed.get_rank() if torch.distributed.is_initialized() else -1
+        print(f"[HY-DBG] hy pipeline before _generate rank={_rank}", flush=True)
         outputs = self._generate(**model_inputs, **kwargs)
+        print(
+            f"[HY-DBG] hy pipeline after _generate rank={_rank} "
+            f"outputs_type={type(outputs)} len={len(outputs) if hasattr(outputs, '__len__') else None} "
+            f"output0_type={type(outputs[0]) if hasattr(outputs, '__len__') and len(outputs) > 0 else None}",
+            flush=True,
+        )
         custom_output = {}
         if any(t is not None for t in cot_text_list):
             custom_output["ar_generated_text"] = cot_text_list[0] if len(cot_text_list) == 1 else cot_text_list
+        print(f"[HY-DBG] hy pipeline before DiffusionOutput return rank={_rank}", flush=True)
         return DiffusionOutput(
             output=outputs[0],
             custom_output=custom_output,
