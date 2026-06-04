@@ -297,6 +297,48 @@ def get_hunyuan_image_3_pre_process_func(od_config: OmniDiffusionConfig):
     return pre_process_func
 
 
+def _get_hunyuan_vae_backend(od_config: OmniDiffusionConfig) -> str:
+    model_config = od_config.model_config or {}
+    backend = model_config.get("vae_backend", "default")
+    if backend is None:
+        backend = "default"
+    if not isinstance(backend, str):
+        raise TypeError(f"HunyuanImage3 vae_backend must be a string, got {type(backend)!r}.")
+    backend = backend.lower().replace("-", "_")
+    aliases = {
+        "default": "default",
+        "hunyuan": "default",
+        "hunyuan_image3": "default",
+        "online": "hunyuan_image_online",
+        "hunyuan_online": "hunyuan_image_online",
+        "hunyuan_image_online": "hunyuan_image_online",
+    }
+    if backend not in aliases:
+        raise ValueError(
+            "Unsupported HunyuanImage3 vae_backend "
+            f"{backend!r}. Supported values: default, hunyuan_image_online."
+        )
+    return aliases[backend]
+
+
+def _build_hunyuan_vae(od_config: OmniDiffusionConfig, hf_config: Any):
+    # Lazy import to break circular dependency:
+    # autoencoder_kl_hunyuan -> hunyuan_image3/__init__ -> pipeline_hunyuan_image3 -> autoencoder_kl_hunyuan
+    from vllm_omni.diffusion.distributed.autoencoders.autoencoder_kl_hunyuan import (  # noqa: PLC0415
+        DistributedAutoencoderKLHunyuan,
+        DistributedAutoencoderKLHunyuanOnline,
+    )
+
+    backend = _get_hunyuan_vae_backend(od_config)
+    vae_cls = {
+        "default": DistributedAutoencoderKLHunyuan,
+        "hunyuan_image_online": DistributedAutoencoderKLHunyuanOnline,
+    }[backend]
+    vae = vae_cls.from_config(hf_config.vae)
+    vae.use_spatial_tiling = od_config.vae_use_tiling
+    return vae, backend
+
+
 class HunyuanImage3Pipeline(
     HunyuanImage3PreTrainedModel,
     GenerationMixin,
@@ -342,14 +384,7 @@ class HunyuanImage3Pipeline(
         quant_config = od_config.quantization_config
         self.model = HunyuanImage3Model(self.hf_config, quant_config=quant_config)
         self.transformer = self.model
-        # Lazy import to break circular dependency:
-        # autoencoder_kl_hunyuan -> hunyuan_image3/__init__ -> pipeline_hunyuan_image3 -> autoencoder_kl_hunyuan
-        from vllm_omni.diffusion.distributed.autoencoders.autoencoder_kl_hunyuan import (  # noqa: PLC0415
-            DistributedAutoencoderKLHunyuan,
-        )
-
-        self.vae = DistributedAutoencoderKLHunyuan.from_config(self.hf_config.vae)
-        self.vae.use_spatial_tiling = self.od_config.vae_use_tiling
+        self.vae, self.vae_backend = _build_hunyuan_vae(self.od_config, self.hf_config)
         self._pipeline = None
         self._tkwrapper = TokenizerWrapper(od_config.model)
         self.image_processor = HunyuanImage3ImageProcessor(self.hf_config)
