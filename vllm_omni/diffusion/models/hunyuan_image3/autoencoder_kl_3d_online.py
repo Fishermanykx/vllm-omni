@@ -652,17 +652,17 @@ class AutoencoderKLConv3D(ModelMixin, ConfigMixin):
                     dec = F.pad(dec, (0, pad_w, 0, pad_h, 0, 0), "constant", 0)
                 decoded_tiles.append(dec)
                 decoded_metas.append(torch.tensor([ri, rj, pad_w, pad_h], device=z.device, dtype=torch.int64))
-            
+
             # 各rank数量不一定相同，进行padding到相同长度
             T_out = decoded_tiles[0].shape[2] if len(decoded_tiles) > 0 else (T-1)*self.ffactor_temporal+1
             while len(decoded_tiles) < tiles_per_rank:
                 decoded_tiles.append(torch.zeros([1, 3, T_out, self.tile_sample_min_size, self.tile_sample_min_size], device=z.device, dtype=dec.dtype))
-                decoded_metas.append(torch.tensor([-1, -1, self.tile_sample_min_size, self.tile_sample_min_size], device=z.device, dtype=torch.int64)) 
-                
+                decoded_metas.append(torch.tensor([-1, -1, self.tile_sample_min_size, self.tile_sample_min_size], device=z.device, dtype=torch.int64))
+
             # 进行gpu的all_gather
             decoded_tiles = torch.stack(decoded_tiles, dim=0)
             decoded_metas = torch.stack(decoded_metas, dim=0)
-            
+
             tiles_gather_list = [torch.empty_like(decoded_tiles) for _ in range(world_size)]
             metas_gather_list = [torch.empty_like(decoded_metas) for _ in range(world_size)]
 
@@ -941,7 +941,7 @@ def load_weights(model, weights: Iterable[tuple[str, torch.Tensor]]) -> set[str]
 
     return loaded_params
 
-def _worker(path, config, 
+def _worker(path, config,
     rank=None, world_size=None, port=None, req_queue=None, rsp_queue=None):
     """
     each rank's worker:
@@ -962,7 +962,7 @@ def _worker(path, config,
     assert visible >= world_size, f"可见卡数 {visible} < world_size {world_size}"
     local_rank = int(os.environ["LOCAL_RANK"])
     device = current_omni_platform.get_torch_device(local_rank)
-    
+
     print(f"[worker {rank}] bind to {device} (visible={visible})", flush=True)
     if not torch.distributed.is_initialized():
         dist.init_process_group(current_omni_platform.dist_backend)
@@ -972,12 +972,12 @@ def _worker(path, config,
     #vae = load_vae(vae_type, vae_precision, device, logger, args, weights_only, only_encoder, only_decoder, sample_size, skip_create_dist=True)
     vae = AutoencoderKLConv3D.from_config(config)
     merged_state_dict = load_sharded_safetensors(path)
-    loaded_params = load_weights(vae, merged_state_dict) 
+    loaded_params = load_weights(vae, merged_state_dict)
     vae = vae.to(device)
     vae.eval()  # 关闭 Dropout、BatchNorm 训练行为
     for param in vae.parameters():
         param.requires_grad = False  #
-    
+
     while True:
         req = req_queue.get()  # blocking
         if req == "__STOP__":
@@ -1042,7 +1042,7 @@ class AutoencoderKLConv3D_Dist(AutoencoderKLConv3D):
     ):
         super().__init__(in_channels, out_channels, latent_channels, block_out_channels, layers_per_block, ffactor_spatial, ffactor_temporal, sample_size, sample_tsize, scaling_factor, shift_factor, downsample_match_channel, upsample_match_channel, only_encoder, only_decoder)
 
-    def create_dist(self, path, config, 
+    def create_dist(self, path, config,
     ):
         self.world_size = 8
         self.port = _find_free_port()
@@ -1056,7 +1056,7 @@ class AutoencoderKLConv3D_Dist(AutoencoderKLConv3D):
             p = ctx.Process(
                 target=_worker,
                 args=(
-                    path, config, 
+                    path, config,
                     rank, self.world_size, self.port,
                     self.req_queues[rank], self.rsp_queue,
                 ),
@@ -1064,7 +1064,7 @@ class AutoencoderKLConv3D_Dist(AutoencoderKLConv3D):
             )
             p.start()
             self.procs.append(p)
-    
+
     def decode(self, z: Tensor, return_dict: bool = True, generator=None):
         """
         synchronous inference: put the same request to all ranks' queues.
