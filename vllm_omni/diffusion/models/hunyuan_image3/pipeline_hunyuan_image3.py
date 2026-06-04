@@ -1434,38 +1434,6 @@ class HunyuanImage3Pipeline(
                     extra_embeds.append(timesteps_r_emb)
                 inputs_embeds = torch.cat([timestep_emb, *extra_embeds, image_emb], dim=1)
 
-                extra_tokens = sum(embed.shape[1] for embed in extra_embeds)
-                if extra_tokens > 0:
-                    if query_lens is not None:
-                        query_lens = [q + extra_tokens for q in query_lens]
-                    if seq_lens is not None:
-                        seq_lens = [s + extra_tokens for s in seq_lens]
-
-                    insert_pos = timestep_emb.shape[1]
-                    if attention_mask is not None:
-                        old_bsz, old_heads, old_q_len, old_seq_len = attention_mask.shape
-                        query_pad = attention_mask.new_ones(old_bsz, old_heads, extra_tokens, old_seq_len)
-                        attention_mask = torch.cat(
-                            [attention_mask[:, :, :insert_pos], query_pad, attention_mask[:, :, insert_pos:]], dim=2
-                        )
-                        key_pad = attention_mask.new_ones(old_bsz, old_heads, old_q_len + extra_tokens, extra_tokens)
-                        attention_mask = torch.cat(
-                            [attention_mask[:, :, :, :insert_pos], key_pad, attention_mask[:, :, :, insert_pos:]], dim=3
-                        )
-
-                    if custom_pos_emb is not None:
-                        custom_pos_emb = tuple(
-                            torch.cat(
-                                [
-                                    emb[:, :insert_pos],
-                                    emb.new_zeros(bsz, extra_tokens, emb.shape[-1]),
-                                    emb[:, insert_pos:],
-                                ],
-                                dim=1,
-                            )
-                            for emb in custom_pos_emb
-                        )
-
         # Instantiate placeholder tokens: <timestep>, <img> for cond images
         # Should only run once with kv-cache enabled.
         if cond_vae_images is not None:
