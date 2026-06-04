@@ -16,6 +16,9 @@ from vllm_omni.diffusion.models.hunyuan_image3.autoencoder import AutoencoderKLC
 from vllm_omni.diffusion.models.hunyuan_image3.autoencoder_kl_3d_online import (
     AutoencoderKLConv3D as HunyuanOnlineAutoencoderKLConv3D,
 )
+from vllm_omni.diffusion.models.hunyuan_image3.autoencoder_kl_3d_online import (
+    DecoderOutput as HunyuanOnlineDecoderOutput,
+)
 
 logger = init_logger(__name__)
 
@@ -183,5 +186,52 @@ class DistributedAutoencoderKLHunyuanOnline(HunyuanOnlineAutoencoderKLConv3D, Di
     encode_tile_split = DistributedAutoencoderKLHunyuan.encode_tile_split
     encode_tile_exec = DistributedAutoencoderKLHunyuan.encode_tile_exec
     encode_tile_merge = DistributedAutoencoderKLHunyuan.encode_tile_merge
-    spatial_tiled_encode = DistributedAutoencoderKLHunyuan.spatial_tiled_encode
-    spatial_tiled_decode = DistributedAutoencoderKLHunyuan.spatial_tiled_decode
+
+    def spatial_tiled_encode(self, x: torch.Tensor):
+        if not self.is_distributed_enabled():
+            return HunyuanOnlineAutoencoderKLConv3D.spatial_tiled_encode(self, x)
+
+        logger.debug("Encode running with distributed executor")
+        return self.distributed_executor.execute(
+            x,
+            DistributedOperator(
+                split=self.encode_tile_split,
+                exec=self.encode_tile_exec,
+                merge=self.encode_tile_merge,
+            ),
+            broadcast_result=True,
+        )
+
+    def spatial_tiled_decode(self, z: torch.Tensor):
+        if not self.is_distributed_enabled():
+            return HunyuanOnlineAutoencoderKLConv3D.spatial_tiled_decode(self, z)
+
+        logger.debug("Decode running with distributed executor")
+        return self.distributed_executor.execute(
+            z,
+            DistributedOperator(split=self.tile_split, exec=self.tile_exec, merge=self.tile_merge),
+            broadcast_result=True,
+        )
+
+    def decode(self, z: torch.Tensor, return_dict: bool = True, generator=None):
+        def _decode(z: torch.Tensor):
+            if self.use_temporal_tiling and z.shape[-3] > self.tile_latent_min_tsize:
+                return self.temporal_tiled_decode(z)
+            if self.use_spatial_tiling and (
+                z.shape[-1] > self.tile_latent_min_size or z.shape[-2] > self.tile_latent_min_size
+            ):
+                return self.spatial_tiled_decode(z)
+            return self.decoder(z)
+
+        if self.use_slicing and z.shape[0] > 1:
+            decoded_slices = [_decode(z_slice) for z_slice in z.split(1)]
+            decoded = torch.cat(decoded_slices)
+        else:
+            decoded = _decode(z)
+
+        if z.shape[-3] == 1:
+            decoded = decoded[:, :, -1:]
+        if not return_dict:
+            return (decoded,)
+
+        return HunyuanOnlineDecoderOutput(sample=decoded)
