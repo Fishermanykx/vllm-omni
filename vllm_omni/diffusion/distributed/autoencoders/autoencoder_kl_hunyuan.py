@@ -143,3 +143,57 @@ class DistributedAutoencoderKLHunyuan(AutoencoderKLConv3D, DistributedVaeMixin):
             DistributedOperator(split=self.tile_split, exec=self.tile_exec, merge=self.tile_merge),
             broadcast_result=True,
         )
+
+
+class DistributedAutoencoderKLHunyuanOnline(DistributedAutoencoderKLHunyuan):
+    """HunyuanImage-online VAE backend.
+
+    The customer online package ships the same 3D KL autoencoder architecture
+    with a different tiling blend default. Keep it as an opt-in backend so the
+    existing HunyuanImage3 behavior remains unchanged.
+    """
+
+    online_tile_overlap_factor = 0.125
+
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: int,
+        latent_channels: int,
+        block_out_channels: tuple[int, ...],
+        layers_per_block: int,
+        ffactor_spatial: int,
+        ffactor_temporal: int,
+        sample_size: int,
+        sample_tsize: int,
+        scaling_factor: float | None = None,
+        shift_factor: float | None = None,
+        downsample_match_channel: bool = True,
+        upsample_match_channel: bool = True,
+        only_encoder: bool = False,
+        only_decoder: bool = False,
+    ) -> None:
+        super().__init__(
+            in_channels=in_channels,
+            out_channels=out_channels,
+            latent_channels=latent_channels,
+            block_out_channels=block_out_channels,
+            layers_per_block=layers_per_block,
+            ffactor_spatial=ffactor_spatial,
+            ffactor_temporal=ffactor_temporal,
+            sample_size=sample_size,
+            sample_tsize=sample_tsize,
+            scaling_factor=scaling_factor,
+            shift_factor=shift_factor,
+            downsample_match_channel=downsample_match_channel,
+            upsample_match_channel=upsample_match_channel,
+            only_encoder=only_encoder,
+            only_decoder=only_decoder,
+        )
+        self.tile_overlap_factor = self.online_tile_overlap_factor
+
+    @classmethod
+    def from_config(cls, config: Any, **kwargs: Any):
+        model = super().from_config(config, **kwargs)
+        model.tile_overlap_factor = cls.online_tile_overlap_factor
+        return model
