@@ -26,6 +26,8 @@ from diffusers.models.modeling_utils import ModelMixin
 from diffusers.utils.torch_utils import randn_tensor
 from diffusers.utils import BaseOutput
 
+from vllm_omni.diffusion.distributed.utils import get_local_device
+from vllm_omni.platforms import current_omni_platform
 
 
 class DiagonalGaussianDistribution(object):
@@ -499,7 +501,7 @@ class AutoencoderKLConv3D(ModelMixin, ConfigMixin):
 
         self.use_compile = False
 
-        self.empty_cache = torch.empty(0, device="cuda")
+        self.empty_cache = torch.empty(0, device=get_local_device())
 
     def _set_gradient_checkpointing(self, module, value=False):
         if isinstance(module, (Encoder, Decoder)):
@@ -825,7 +827,7 @@ class AutoencoderKLConv3D(ModelMixin, ConfigMixin):
         return DecoderOutput(sample=decoded)
 
     def decode_dist(self, z: Tensor, return_dict: bool = True, generator=None):
-        z = z.cuda()
+        z = z.to(get_local_device())
         self.use_spatial_tiling = True
         decoded = self.decode(z)
         self.use_spatial_tiling = False
@@ -955,23 +957,23 @@ def _worker(path, config,
     os.environ["RANK"] = str(rank)
     os.environ["LOCAL_RANK"] = str(rank)
 
-    # device binding should be early than all CUDA operations
-    visible = torch.cuda.device_count()
+    # Device binding should be early than all device operations.
+    visible = current_omni_platform.get_device_count()
     assert visible >= world_size, f"可见卡数 {visible} < world_size {world_size}"
     local_rank = int(os.environ["LOCAL_RANK"])
+    device = current_omni_platform.get_torch_device(local_rank)
     
-    print(f"[worker {rank}] bind to cuda:{local_rank} (visible={visible})", flush=True)
+    print(f"[worker {rank}] bind to {device} (visible={visible})", flush=True)
     if not torch.distributed.is_initialized():
-        dist.init_process_group("nccl")
-    torch.cuda.set_device(local_rank)
+        dist.init_process_group(current_omni_platform.dist_backend)
+    current_omni_platform.set_device(device)
     #from .. import load_vae
 
     #vae = load_vae(vae_type, vae_precision, device, logger, args, weights_only, only_encoder, only_decoder, sample_size, skip_create_dist=True)
-    #vae = vae.cuda()
     vae = AutoencoderKLConv3D.from_config(config)
     merged_state_dict = load_sharded_safetensors(path)
     loaded_params = load_weights(vae, merged_state_dict) 
-    vae = vae.cuda()
+    vae = vae.to(device)
     vae.eval()  # 关闭 Dropout、BatchNorm 训练行为
     for param in vae.parameters():
         param.requires_grad = False  #
