@@ -36,6 +36,30 @@ def test_build_quant_config_invalid():
         build_quant_config("invalid_method")
 
 
+def test_build_quant_config_external_quantization_registration(monkeypatch):
+    from vllm_omni.quantization import factory
+
+    class DummyExternalConfig:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+        def get_name(self):
+            return "ascend"
+
+    def register_external(method):
+        assert method == "ascend"
+        factory.QUANTIZATION_METHODS.append("ascend")
+
+    monkeypatch.setattr(factory, "QUANTIZATION_METHODS", [])
+    monkeypatch.setattr(factory, "_ensure_external_quantization_registered", register_external)
+    monkeypatch.setattr(factory, "get_quantization_config", lambda method: DummyExternalConfig)
+
+    config = factory.build_quant_config({"method": "ascend", "foo": "bar"})
+
+    assert config.get_name() == "ascend"
+    assert config.kwargs == {"foo": "bar"}
+
+
 def test_build_quant_config_dict():
     from vllm_omni.quantization import build_quant_config
 

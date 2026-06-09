@@ -62,7 +62,23 @@ _OVERRIDES: dict[str, Callable[..., QuantizationConfig]] = {
     "auto-round": _build_inc,
 }
 
-SUPPORTED_QUANTIZATION_METHODS: list[str] = list(dict.fromkeys(QUANTIZATION_METHODS + list(_OVERRIDES.keys())))
+
+def _supported_quantization_methods() -> list[str]:
+    return list(dict.fromkeys(QUANTIZATION_METHODS + list(_OVERRIDES.keys())))
+
+
+SUPPORTED_QUANTIZATION_METHODS: list[str] = _supported_quantization_methods()
+
+
+def _ensure_external_quantization_registered(method: str) -> None:
+    """Import optional platform quantization registrations on demand."""
+    if method == "ascend":
+        try:
+            import vllm_ascend.quantization.modelslim_config  # noqa: F401
+        except ModuleNotFoundError as exc:
+            if exc.name and exc.name.startswith("vllm_ascend"):
+                return
+            raise
 
 
 def _build_single(method: str, **kwargs: Any) -> QuantizationConfig:
@@ -75,8 +91,11 @@ def _build_single(method: str, **kwargs: Any) -> QuantizationConfig:
     if method in _OVERRIDES:
         return _OVERRIDES[method](**kwargs)
 
+    _ensure_external_quantization_registered(method)
+
     if method not in QUANTIZATION_METHODS:
-        raise ValueError(f"Unknown quantization method: {method!r}. Supported: {SUPPORTED_QUANTIZATION_METHODS}")
+        supported_methods = _supported_quantization_methods()
+        raise ValueError(f"Unknown quantization method: {method!r}. Supported: {supported_methods}")
 
     config_cls = get_quantization_config(method)
 
