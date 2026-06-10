@@ -7,6 +7,7 @@ Architecture:
   → FSQ → MiniCPM4PagedResidualLM (8 layers, PagedAttention, no RoPE)
   → LocDiT (CFM solver) → AudioVAE → 48kHz waveform
 """
+# add a line for test
 
 from __future__ import annotations
 
