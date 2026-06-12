@@ -78,6 +78,31 @@ def parse_args():
     parser.add_argument("--init-timeout", type=int, default=300, help="Initialization timeout in seconds.")
     parser.add_argument("--enforce-eager", action="store_true", help="Disable torch.compile.")
     parser.add_argument(
+        "--quantization",
+        type=str,
+        default=None,
+        choices=["fp8", "int8", "gguf"],
+        help=(
+            "Quantization method for the transformer. Options: 'fp8', 'int8', or 'gguf'. "
+            "Default: None."
+        ),
+    )
+    parser.add_argument(
+        "--gguf-model",
+        type=str,
+        default=None,
+        help="GGUF file path or HF reference for transformer weights. Required with --quantization gguf.",
+    )
+    parser.add_argument(
+        "--ignored-layers",
+        type=str,
+        default=None,
+        help=(
+            "Comma-separated layer name patterns to skip quantization, for example "
+            "'add_kv_proj,to_add_out'. Only used with --quantization."
+        ),
+    )
+    parser.add_argument(
         "--diffusion-kv-cache-dtype",
         type=str,
         default=None,
@@ -151,6 +176,23 @@ def main():
     if deploy_config is None and stage_configs_path is None:
         deploy_config = _MODALITY_DEFAULT_DEPLOY_CONFIG[args.modality]
 
+    quant_kwargs = {}
+    ignored_layers = [s.strip() for s in args.ignored_layers.split(",") if s.strip()] if args.ignored_layers else None
+    if args.quantization == "gguf":
+        if not args.gguf_model:
+            raise ValueError("--gguf-model is required when --quantization gguf is set.")
+        quant_kwargs["quantization_config"] = {
+            "method": "gguf",
+            "gguf_model": args.gguf_model,
+        }
+    elif args.quantization and ignored_layers:
+        quant_kwargs["quantization_config"] = {
+            "method": args.quantization,
+            "ignored_layers": ignored_layers,
+        }
+    elif args.quantization:
+        quant_kwargs["quantization"] = args.quantization
+
     omni_kwargs = {
         "model": args.model,
         "vae_use_tiling": args.vae_use_tiling,
@@ -161,6 +203,7 @@ def main():
         "diffusion_kv_cache_dtype": args.diffusion_kv_cache_dtype,
         "diffusion_kv_cache_skip_steps": args.diffusion_kv_cache_skip_steps,
         "diffusion_kv_cache_skip_layers": args.diffusion_kv_cache_skip_layers,
+        **quant_kwargs,
     }
 
     if additional_config is not None:
@@ -261,6 +304,11 @@ def main():
         print(f"  diffusion_kv_cache_dtype: {args.diffusion_kv_cache_dtype}")
         print(f"  diffusion_kv_cache_skip_steps: {args.diffusion_kv_cache_skip_steps}")
         print(f"  diffusion_kv_cache_skip_layers: {args.diffusion_kv_cache_skip_layers}")
+        print(f"  Quantization: {args.quantization}")
+        if args.gguf_model:
+            print(f"  GGUF model: {args.gguf_model}")
+        if ignored_layers:
+            print(f"  Ignored quantization layers: {ignored_layers}")
     if args.modality == "text2img":
         print(f"  Output size: {args.width}x{args.height}")
     if args.image_path:
