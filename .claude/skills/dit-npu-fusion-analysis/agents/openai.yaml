@@ -1,0 +1,4 @@
+interface:
+  display_name: "DiT NPU 融合算子分析"
+  short_description: "结合 profiling、DiT 模型调用链及昇腾版本化契约分析融合算子机会"
+  default_prompt: "使用 $dit-npu-fusion-analysis，结合现有 profiling 和 HunyuanImage、Wan2.2 等目标 DiT 模型代码，核对 MindIE-SD 与 torch_npu 融合算子契约，生成有证据的可行性、收益及适配验证报告。"

@@ -37,6 +37,10 @@ self-check.
 - [`diffusion-accuracy-test`](diffusion-accuracy-test/SKILL.md): adds or extends
   image/video numerical accuracy tests with aligned references, scoped
   tolerances, and explicit Buildkite Accuracy coverage
+- [`dit-npu-fusion-analysis`](dit-npu-fusion-analysis/SKILL.md): analyzes NPU
+  operator fusion opportunities for DiT models such as HunyuanImage and Wan2.2
+  using profiling, active call chains, and version-matched MindIE-SD/torch_npu
+  contracts, with feasibility reports and adaptation/validation plans
 - [`find-simplifications`](find-simplifications/SKILL.md): finds evidence-backed
   opportunities to remove or merge dead, duplicated, speculative,
   over-generalized, or unnecessarily defensive vLLM-Omni code
