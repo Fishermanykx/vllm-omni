@@ -41,6 +41,10 @@ self-check.
   image/video performance-benchmark cases and their nightly/weekly Buildkite
   Perf coverage, using the `run_benchmark.py` config schema and a fixed
   measurement contract
+- [`dit-npu-fusion-analysis`](dit-npu-fusion-analysis/SKILL.md): analyzes NPU
+  operator fusion opportunities for DiT models such as HunyuanImage and Wan2.2
+  using profiling, active call chains, and version-matched MindIE-SD/torch_npu
+  contracts, with feasibility reports and adaptation/validation plans
 - [`find-simplifications`](find-simplifications/SKILL.md): finds evidence-backed
   opportunities to remove or merge dead, duplicated, speculative,
   over-generalized, or unnecessarily defensive vLLM-Omni code
