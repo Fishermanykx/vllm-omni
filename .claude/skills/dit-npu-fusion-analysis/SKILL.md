@@ -1,6 +1,6 @@
 ---
 name: dit-npu-fusion-analysis
-description: Analyze DiT NPU operator fusion using profiling, existing PRs and version-matched MindIE-SD, torch_npu and vLLM-Ascend implementations. Route to the canonical performance operator skill.
+description: Route Ascend NPU diffusion model and operator optimization to the canonical MindIE-SD skill router.
 ---
 
 # DiT NPU Fusion Analysis
