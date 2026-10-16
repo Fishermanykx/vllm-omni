@@ -1,12 +1,17 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: Copyright contributors to the vLLM-Omni project
+
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: Copyright contributors to the vLLM-Omni project
 """Portable behavioral checks using synthetic data, not measured NPU traces."""
 
 import gzip
 import json
-from pathlib import Path
 import subprocess
 import sys
 import tempfile
 import unittest
+from pathlib import Path
 
 SCRIPT = Path(__file__).with_name("summarize_profile.py")
 
@@ -30,8 +35,9 @@ class ProfileSummaryTests(unittest.TestCase):
         self.temp.cleanup()
 
     def run_cli(self, *args, success=True):
-        result = subprocess.run([sys.executable, str(SCRIPT), *map(str, args)],
-                                text=True, encoding="utf-8", capture_output=True)
+        result = subprocess.run(
+            [sys.executable, str(SCRIPT), *map(str, args)], text=True, encoding="utf-8", capture_output=True
+        )
         if success:
             self.assertEqual(result.returncode, 0, result.stderr)
             return json.loads(result.stdout)
@@ -67,12 +73,30 @@ class ProfileSummaryTests(unittest.TestCase):
 
     def test_csv_bom_units_shapes_and_output(self):
         source = self.root / "kernels.csv"
-        source.write_text('Name,Duration(ns),Shape\n融合,2000000,"[1, 128]"\n融合,3000000,"[1, 128]"\n', encoding="utf-8-sig")
+        source.write_text(
+            'Name,Duration(ns),Shape\n融合,2000000,"[1, 128]"\n融合,3000000,"[1, 128]"\n', encoding="utf-8-sig"
+        )
         self.assertEqual(self.run_cli("csv", source, "--inventory")["columns"][0], "Name")
         output = self.root / "summary.json"
-        result = subprocess.run([sys.executable, str(SCRIPT), "csv", str(source), "--name-column", "Name",
-                                 "--duration-column", "Duration(ns)", "--shape-column", "Shape", "--unit", "ns",
-                                 "--output", str(output)], capture_output=True)
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(SCRIPT),
+                "csv",
+                str(source),
+                "--name-column",
+                "Name",
+                "--duration-column",
+                "Duration(ns)",
+                "--shape-column",
+                "Shape",
+                "--unit",
+                "ns",
+                "--output",
+                str(output),
+            ],
+            capture_output=True,
+        )
         self.assertEqual(result.returncode, 0, result.stderr)
         out = json.loads(output.read_text(encoding="utf-8"))
         self.assertEqual(out["sum_ms"], 5)
@@ -83,8 +107,26 @@ class ProfileSummaryTests(unittest.TestCase):
     def test_invalid_duration_and_columns(self):
         source = self.root / "bad.csv"
         source.write_text("Name,Duration\nbad,NaN\n", encoding="utf-8")
-        self.assertIn("finite", self.run_cli("csv", source, "--name-column", "Name", "--duration-column", "Duration", "--unit", "ms", success=False))
-        self.assertIn("exact", self.run_cli("csv", source, "--name-column", "missing", "--duration-column", "Duration", "--unit", "ms", success=False))
+        self.assertIn(
+            "finite",
+            self.run_cli(
+                "csv", source, "--name-column", "Name", "--duration-column", "Duration", "--unit", "ms", success=False
+            ),
+        )
+        self.assertIn(
+            "exact",
+            self.run_cli(
+                "csv",
+                source,
+                "--name-column",
+                "missing",
+                "--duration-column",
+                "Duration",
+                "--unit",
+                "ms",
+                success=False,
+            ),
+        )
 
 
 if __name__ == "__main__":

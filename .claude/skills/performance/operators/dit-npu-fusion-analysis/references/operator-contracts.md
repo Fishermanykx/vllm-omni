@@ -11,6 +11,7 @@
 - [npu_add_rms_norm](https://www.hiascend.com/document/detail/en/Pytorch/2610/apiref/customapi/docs/en/custom_APIs/torch_npu/torch_npu-npu_add_rms_norm.md)：检索摘要显示三 Tensor 输出；本次直接访问超时，具体约束须在使用时读取正文或对应包源码。
 - [历史 CANN 8.0 RC1 alpha003 npu_rotary_mul](https://www.hiascend.com/doc_center/source/zh/CANNCommunityEdition/80RC1alpha003/apiref/fmkadptapi/ptaoplist_000717.html)：只作历史契约示例，该页面的维度/对齐要求不能泛化到新版。
 - [Ascend op-plugin](https://gitcode.com/Ascend/op-plugin)：按 tag 查 `docs/zh/custom_APIs/torch_npu/` 与算子实现。
+- [vLLM-Ascend Triton 实现](https://github.com/vllm-project/vllm-ascend/tree/main/vllm_ascend/ops/triton)：检索部署版本中的 `linearnorm/`、相关模型子目录及 CustomOp 注册/调用处。main 只用于发现候选，不作为部署可用性证明。
 
 版本不明时，API 名只能列作检索线索；不能生成声称可直接执行的调用示例。文档与实际安装包冲突时记录冲突，优先复现目标包实际行为，不能静默选较宽松的一方。
 
@@ -24,11 +25,15 @@
 | add → LayerNorm | MindIE-SD `add_layer_norm` | residual 输出、bias/affine、支持的维度 |
 | split/chunk → SiLU → mul | `npu_swiglu`、现有 `SiluAndMul` dispatch | gate/up 次序、dim、切分布局、是否已融合 |
 | RoPE | `npu_rotary_mul`、`npu_apply_rotary_pos_emb`、MindIE-SD `rotary_position_embedding` | half/interleaved、partial rotary、MRoPE 位置、cos/sin 布局、次序 |
-| QKV + Norm + RoPE | 对应版本的复合算子/schema | 是否存在且可调用、norm/RoPE 次序、bias、GQA、cache ABI；不能由名称推断 |
+| QKV + Norm + RoPE | MindIE-SD `norm_rope_concat`；vLLM-Ascend `linearnorm/` 中 split QKV/RMSNorm/RoPE、MRoPE、SIMT/TP 变体 | registry/schema 是否可调用、norm/RoPE 次序与舍入、bias、GQA、输出布局、UB/tiling；不能由名称推断 |
+| Norm + RoPE + cache 写入 | vLLM-Ascend Triton 的模型专用 QK norm/rope/cache 复合实现 | paged cache 与 DiT prefix cache 区别、slot mapping、写入生命周期、辅助 index 分支、已旋转缓存不能重复处理 |
+| Linear + activation / 完整 FFN | 部署版本的 GEMM epilogue、MindIE-SD `eagle_ffn_linear`、torch_npu `npu_ffn` 及 Ascend Triton 实现 | packed gate/up 权重顺序、GEMM 输出与激活舍入、权重预处理/额外常驻内存、TP 归约和量化限制 |
 | SDPA / QK-softmax-V | MindIE-SD `attention_forward`、torch_npu FA/FIA 系列 | causal/mask、GQA/MQA、真实 seq len、cache、LSE、layout |
 | MoE 分组 GEMM + activation | `npu_grouped_matmul` 及目标版复合算子 | EP dispatch/combine、routing、权重布局、padding、量化 scale |
 
 这些是检索种子，不保证目标版本有此符号或适配目标模型。量化、稀疏、近似 attention 独立列为改变精度/算法的候选，仅在用户允许时进一步分析。
+
+按 [复合融合检索](prior-art-and-compound-fusion.md#复合融合检索) 对比更大边界。公共 API、私有 wrapper、schema/注册、kernel、调用方和测试分别核对；“仓内有源码”与“部署包已编译/注册且被消费”分别记录。复合算子改变内部精度边界时，即使输入/输出都为 BF16，也不能认定与分解路径等价。
 
 ## 每个候选的契约记录
 

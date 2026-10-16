@@ -1,0 +1,101 @@
+{
+  "schema_version": "1.0",
+  "capability_id": "performance.operators.dit-npu-fusion-analysis",
+  "skill_version": "0.2.1",
+  "name": "dit-npu-fusion-analysis",
+  "entrypoint": "SKILL.md",
+  "capabilities": [
+    "prior-art-audit",
+    "dit-npu-fusion-analysis",
+    "compound-fusion-contract-comparison",
+    "authorized-operator-adaptation"
+  ],
+  "applicability": {
+    "workloads": [
+      "DiT image/video denoising; standalone or hybrid model"
+    ],
+    "platforms": [
+      "Ascend NPU"
+    ],
+    "modes": [
+      "analyze",
+      "implement"
+    ],
+    "preconditions": [
+      "Target code or repository revision is accessible",
+      "Implementation and device execution follow the user-authorized scope"
+    ],
+    "degraded_modes": [
+      "No profiling: source pre-audit only",
+      "Unknown provider/device version: conditional feasibility only"
+    ],
+    "exclusions": [
+      "Pure AR or VAE optimization",
+      "Full platform tuning or production qualification"
+    ]
+  },
+  "inputs": [
+    "repository/revision/dirty diff",
+    "model/checkpoint/workload/fixed inputs",
+    "hardware/software/configuration",
+    "profile and existing execution evidence when available",
+    "objective/precision claim/threshold provenance",
+    "authorized scope and output directory"
+  ],
+  "outputs": [
+    "fusion report and candidate decisions",
+    "execution-evidence.json",
+    "raw profile summaries and source/provider evidence",
+    "authorized code/config changes and validation artifacts when requested"
+  ],
+  "dependencies": {
+    "required": [],
+    "conditional": [
+      {
+        "name": "Python 3 standard library",
+        "when": "Using scripts/summarize_profile.py"
+      },
+      {
+        "name": "Matching NPU runtime and device",
+        "when": "Executing NPU implementation/accuracy/performance validation"
+      }
+    ],
+    "optional_guidance": [
+      {
+        "name": "diffusion-perf-opt",
+        "path": "../../../diffusion-perf-opt/SKILL.md",
+        "purpose": "Workload-level coordination and diagnosis"
+      },
+      {
+        "name": "vllm-omni-test",
+        "path": "../../../vllm-omni-test/SKILL.md",
+        "purpose": "CI and regression conventions"
+      },
+      {
+        "name": "production-add-diffusion-model",
+        "path": "../../../production-add-diffusion-model/SKILL.md",
+        "purpose": "Independent production qualification"
+      }
+    ]
+  },
+  "expected_evidence": {
+    "analyze": [
+      "prior-art search scope and PR heads",
+      "source/profile attribution and limitations",
+      "version-matched contracts and larger fusion comparison",
+      "adaptation/fallback/validation plan"
+    ],
+    "implement": [
+      "actual changes and effective runtime route",
+      "quality claim and threshold provenance",
+      "non-profiler controlled E2E measurements",
+      "regression/fallback outcomes or explicit gaps"
+    ]
+  },
+  "contracts": {
+    "execution_evidence": "references/execution-contracts.md",
+    "execution_template": "assets/execution-evidence.template.json",
+    "report": "references/report-template.md"
+  },
+  "cost_hints": []
+}
