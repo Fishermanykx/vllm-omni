@@ -9,8 +9,8 @@ pull request review.
 
 Each skill lives in its own directory under `.claude/skills/`, either at the
 root or within a capability layer. Following the organization proposed in
-[RFC #8856](https://github.com/vllm-project/vllm-omni/issues/8856), the DiT NPU
-operator skill now uses this layout; other existing skills keep their paths:
+[RFC #8856](https://github.com/vllm-project/vllm-omni/issues/8856), the Ascend diffusion
+optimization router uses this layout; other existing skills keep their paths:
 
 ```text
 .claude/skills/
@@ -20,13 +20,9 @@ operator skill now uses this layout; other existing skills keep their paths:
 ├── performance/
 │   └── operators/
 │       └── dit-npu-fusion-analysis/
-│           ├── SKILL.md          # Canonical instructions
-│           ├── skill-metadata.json
-│           ├── agents/openai.yaml
-│           ├── references/
-│           ├── assets/execution-evidence.template.json
-│           └── scripts/
-└── ...                          # Other existing skills, unchanged
+│           ├── SKILL.md          # MindIE-SD routing instructions
+│           └── agents/openai.yaml
+└── ...                          # Other existing skills
 ```
 
 A skill may include:
@@ -34,8 +30,6 @@ A skill may include:
 - `SKILL.md`: the main workflow and operating instructions
 - `references/`: focused reference material used by the skill
 - `scripts/`: small helper scripts used by the skill
-- `skill-metadata.json`: versioned capability/applicability/dependency contract
-- `assets/`: templates used in task output, including execution evidence
 
 ## Using the Skills
 
@@ -64,14 +58,11 @@ self-check.
   image/video performance-benchmark cases and their nightly/weekly Buildkite
   Perf coverage, using the `run_benchmark.py` config schema and a fixed
   measurement contract
-- [`dit-npu-fusion-analysis`](performance/operators/dit-npu-fusion-analysis/SKILL.md): analyzes NPU
-  operator fusion opportunities for DiT models such as HunyuanImage and Wan2.2
-    using profiling, active call chains, existing-PR checks, and version-matched
-    MindIE-SD/torch_npu/vLLM-Ascend Triton contracts; compares local and larger
-    fused subgraphs, with feasibility reports and, when requested, implementation,
-  backend comparisons, accuracy/E2E validation, and NPU regression integration;
-  see its [workflow routing](performance/operators/dit-npu-fusion-analysis/references/workflow-integration.md)
-  and [versioned evidence contract](performance/operators/dit-npu-fusion-analysis/references/execution-contracts.md)
+- [`dit-npu-fusion-analysis`](performance/operators/dit-npu-fusion-analysis/SKILL.md):
+  routes Ascend NPU diffusion model and operator optimization to the applicable
+  MindIE-SD skill, supplying Omni context and retaining repository-local tests;
+  the existing name remains a discovery entry, with optimization methods and
+  acceptance guidance maintained in MindIE-SD
 - [`find-simplifications`](find-simplifications/SKILL.md): finds evidence-backed
   opportunities to remove or merge dead, duplicated, speculative,
   over-generalized, or unnecessarily defensive vLLM-Omni code
@@ -98,23 +89,24 @@ self-check.
   `test-weekly.yml`), and copy-paste local plus CI-like `pytest` commands; see
   `references/test-routing.md` for level-to-command mapping
 
-## Task-to-Capability Composition
+## Ascend Optimization Routing
 
-Compose only the capabilities required by the task and its evidence gaps.
-These entries are guides loaded by an execution agent, not independently
-running services. RFC-proposed guides are usable only when present in the
-target checkout.
+For Ascend NPU diffusion tasks, `diffusion-perf-opt` consults the
+[MindIE-SD router](performance/operators/dit-npu-fusion-analysis/SKILL.md)
+before hardware-specific analysis. The router locates an existing checkout or
+the official dev skill index and reads the selected instructions. It does not
+copy SD's operator catalogue, benefit model or acceptance protocol into Omni.
 
-| Task | Coordination / owner | Capability to compose | Completion evidence |
-| --- | --- | --- | --- |
-| Identify DiT NPU fusion opportunities | Direct caller or workload execution agent | [DiT NPU fusion](performance/operators/dit-npu-fusion-analysis/SKILL.md) | Prior-art audit, profile/source attribution, contracts, candidate and validation plans |
-| Optimize an existing diffusion model | [diffusion-perf-opt](diffusion-perf-opt/SKILL.md) or task execution agent | DiT NPU operator guidance when applicable; [testing](vllm-omni-test/SKILL.md) for required regression | Runtime route, quality claim, controlled E2E A/B, fallback/regression results |
-| Integrate a model | [add-diffusion-model](add-diffusion-model/SKILL.md) | Operator guidance after semantic/loading correctness, when needed | Integration evidence plus scoped operator validation; no repeated onboarding for existing models |
-| Qualify production behavior | [production-add-diffusion-model](production-add-diffusion-model/SKILL.md) | Applicable numerical/performance evidence and testing | Independent API, lifecycle, reliability and feature-combination qualification |
+| Task | Guidance owner | Omni responsibility |
+| --- | --- | --- |
+| Model optimization, bottleneck unknown | MindIE-SD model optimization entry | Supply active source, workload/configuration and existing evidence |
+| Fusion, kernel, pattern or focused profiling task | Relevant MindIE-SD capability | Preserve repository ownership and authorized execution scope |
+| Changes to Omni | Omni test/accuracy skills plus SD NPU acceptance guidance | Implement/test the Omni changes and return actual artifacts |
+| Production qualification | production-add-diffusion-model | Retain independent API, lifecycle and feature-combination checks |
 
-The DiT operator skill returns versioned `ExecutionEvidence`. Reuse checks
-revision/configuration/workload/environment and comparison scope; a prior
-numerical pass does not establish production readiness.
+Read the external index at execution time; selected names and support can vary
+by revision. If guidance is inaccessible, disclose the gap rather than claiming
+that the external workflow ran.
 
 ## MiniMax H3 Creative Skills
 
