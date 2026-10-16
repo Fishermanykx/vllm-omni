@@ -1,0 +1,4 @@
+interface:
+  display_name: "DiT NPU 融合算子分析"
+  short_description: "先查已有 PR，结合 profiling 与版本化契约比较 DiT 局部及复合融合机会"
+  default_prompt: "使用 $dit-npu-fusion-analysis，先核对已有 PR，再结合 profiling 和目标 DiT 调用链比较 MindIE-SD、torch_npu 及 vLLM-Ascend Triton 的局部与复合融合；交付复用或适配方案，按授权完成精度、端到端基准及回归验证。"

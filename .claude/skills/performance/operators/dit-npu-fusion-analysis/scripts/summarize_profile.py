@@ -1,4 +1,9 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: Copyright contributors to the vLLM-Omni project
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: Copyright contributors to the vLLM-Omni project
+
 """Summarize explicitly selected trace events or per-invocation CSV rows.
 
 Standard library only. Does not infer hardware lanes, correlate host/device,
@@ -8,13 +13,13 @@ compute self time, or claim end-to-end latency/utilization.
 from __future__ import annotations
 
 import argparse
-from collections import Counter, defaultdict
 import csv
 import gzip
 import json
 import math
-from pathlib import Path
 import sys
+from collections import Counter, defaultdict
+from pathlib import Path
 
 TO_MS = {"ns": 1e-6, "us": 1e-3, "ms": 1.0, "s": 1e3}
 
@@ -55,11 +60,14 @@ def summarize(rows, top):
         raise ValueError("No matching events/rows. Inspect inventory and selection; no statistics produced.")
     ranked = []
     for (name, shape), stats in groups.items():
-        ranked.append({"name": name, "shape": json.loads(shape),
-                       **stats, "mean_ms": stats["sum_ms"] / stats["count"]})
+        ranked.append({"name": name, "shape": json.loads(shape), **stats, "mean_ms": stats["sum_ms"] / stats["count"]})
     ranked.sort(key=lambda item: item["sum_ms"], reverse=True)
-    result = {"selected_count": len(rows), "group_count": len(groups),
-              "sum_ms": sum(row["duration_ms"] for row in rows), "top": ranked[:top]}
+    result = {
+        "selected_count": len(rows),
+        "group_count": len(groups),
+        "sum_ms": sum(row["duration_ms"] for row in rows),
+        "top": ranked[:top],
+    }
     if intervals:
         result["selected_intervals_union_ms"] = union_duration(intervals)
         result["observed_span_ms"] = max(end for _, end in intervals) - min(start for start, _ in intervals)
@@ -71,13 +79,19 @@ def trace_report(args):
     with opener(args.path, "rt", encoding="utf-8-sig") as source:
         payload = json.load(source)
     events = payload if isinstance(payload, list) else payload["traceEvents"]
-    lanes = Counter((str(e.get("cat", "")), str(e.get("pid", "")), str(e.get("tid", "")),
-                     str(e.get("ph", ""))) for e in events)
+    lanes = Counter(
+        (str(e.get("cat", "")), str(e.get("pid", "")), str(e.get("tid", "")), str(e.get("ph", ""))) for e in events
+    )
     metadata = [e for e in events if e.get("ph") == "M"]
     if args.inventory:
-        return {"event_count": len(events), "metadata": metadata,
-                "lanes": [{"category": cat, "pid": pid, "tid": tid, "phase": phase, "count": count}
-                          for (cat, pid, tid, phase), count in lanes.most_common()]}
+        return {
+            "event_count": len(events),
+            "metadata": metadata,
+            "lanes": [
+                {"category": cat, "pid": pid, "tid": tid, "phase": phase, "count": count}
+                for (cat, pid, tid, phase), count in lanes.most_common()
+            ],
+        }
     if not args.category or args.pid is None:
         raise ValueError("Trace analysis requires --category and --pid; inspect --inventory first.")
     rows = []
@@ -91,19 +105,31 @@ def trace_report(args):
             unsupported_phases[str(event.get("ph", ""))] += 1
             continue
         detail = event.get("args") or {}
-        shape = next((detail[key] for key in ("Input Shapes", "Input shapes", "input_shapes", "shapes")
-                      if key in detail), None)
+        shape = next(
+            (detail[key] for key in ("Input Shapes", "Input shapes", "input_shapes", "shapes") if key in detail), None
+        )
         # Unit comes from confirmed export format, not displayTimeUnit.
         factor = TO_MS[args.unit]
         start = float(event["ts"])
         if not math.isfinite(start):
             raise ValueError(f"event {index}: timestamp must be finite")
-        rows.append({"name": str(event.get("name", "")), "shape": shape,
-                     "duration_ms": number(event["dur"], f"event {index} dur") * factor,
-                     "start_ms": start * factor, "event_index": index,
-                     "pid": event.get("pid"), "tid": event.get("tid"), "args": detail})
-    return {"selection": {"categories": args.category, "pid": args.pid, "tid": args.tid},
-            "ignored_selected_phases": dict(unsupported_phases), **summarize(rows, args.top)}
+        rows.append(
+            {
+                "name": str(event.get("name", "")),
+                "shape": shape,
+                "duration_ms": number(event["dur"], f"event {index} dur") * factor,
+                "start_ms": start * factor,
+                "event_index": index,
+                "pid": event.get("pid"),
+                "tid": event.get("tid"),
+                "args": detail,
+            }
+        )
+    return {
+        "selection": {"categories": args.category, "pid": args.pid, "tid": args.tid},
+        "ignored_selected_phases": dict(unsupported_phases),
+        **summarize(rows, args.top),
+    }
 
 
 def csv_report(args):
@@ -119,13 +145,24 @@ def csv_report(args):
             raise ValueError(f"Set exact --name-column/--duration-column/--shape-column from: {columns}")
         rows = []
         for record, row in enumerate(reader, 1):
-            rows.append({"name": row[args.name_column],
-                         "shape": row[args.shape_column] if args.shape_column else None,
-                         "duration_ms": number(row[args.duration_column], f"CSV record {record}") * TO_MS[args.unit],
-                         "csv_record": record, "csv_line_end": reader.line_num,
-                         "fields": row})
-    return {"selection": {"name_column": args.name_column, "duration_column": args.duration_column,
-                           "shape_column": args.shape_column}, **summarize(rows, args.top)}
+            rows.append(
+                {
+                    "name": row[args.name_column],
+                    "shape": row[args.shape_column] if args.shape_column else None,
+                    "duration_ms": number(row[args.duration_column], f"CSV record {record}") * TO_MS[args.unit],
+                    "csv_record": record,
+                    "csv_line_end": reader.line_num,
+                    "fields": row,
+                }
+            )
+    return {
+        "selection": {
+            "name_column": args.name_column,
+            "duration_column": args.duration_column,
+            "shape_column": args.shape_column,
+        },
+        **summarize(rows, args.top),
+    }
 
 
 def main():
@@ -158,9 +195,15 @@ def main():
         parser.error("--top must be positive")
     try:
         result = trace_report(args) if args.format == "trace" else csv_report(args)
-        result = {"source": str(args.path.resolve()), "raw_unit": args.unit,
-                  "warning": "Selected event sums may overlap. No self time, host/device correlation, request latency, utilization, or speedup is inferred.",
-                  **result}
+        result = {
+            "source": str(args.path.resolve()),
+            "raw_unit": args.unit,
+            "warning": (
+                "Selected event sums may overlap. No self time, host/device correlation, "
+                "request latency, utilization, or speedup is inferred."
+            ),
+            **result,
+        }
         rendered = json.dumps(result, ensure_ascii=False, indent=2, allow_nan=False)
         if args.output:
             args.output.write_text(rendered + "\n", encoding="utf-8")

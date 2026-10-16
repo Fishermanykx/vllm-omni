@@ -7,12 +7,35 @@ pull request review.
 
 ## Directory Structure
 
-Each skill lives in its own directory under `.claude/skills/`. A skill may
-include:
+Each skill lives in its own directory under `.claude/skills/`, either at the
+root or within a capability layer. Following the organization proposed in
+[RFC #8856](https://github.com/vllm-project/vllm-omni/issues/8856), the DiT NPU
+operator skill now uses this layout; other existing skills keep their paths:
+
+```text
+.claude/skills/
+├── readme.md
+├── dit-npu-fusion-analysis/
+│   └── SKILL.md                  # Flat discovery compatibility entry
+├── performance/
+│   └── operators/
+│       └── dit-npu-fusion-analysis/
+│           ├── SKILL.md          # Canonical instructions
+│           ├── skill-metadata.json
+│           ├── agents/openai.yaml
+│           ├── references/
+│           ├── assets/execution-evidence.template.json
+│           └── scripts/
+└── ...                          # Other existing skills, unchanged
+```
+
+A skill may include:
 
 - `SKILL.md`: the main workflow and operating instructions
 - `references/`: focused reference material used by the skill
 - `scripts/`: small helper scripts used by the skill
+- `skill-metadata.json`: versioned capability/applicability/dependency contract
+- `assets/`: templates used in task output, including execution evidence
 
 ## Using the Skills
 
@@ -41,10 +64,14 @@ self-check.
   image/video performance-benchmark cases and their nightly/weekly Buildkite
   Perf coverage, using the `run_benchmark.py` config schema and a fixed
   measurement contract
-- [`dit-npu-fusion-analysis`](dit-npu-fusion-analysis/SKILL.md): analyzes NPU
+- [`dit-npu-fusion-analysis`](performance/operators/dit-npu-fusion-analysis/SKILL.md): analyzes NPU
   operator fusion opportunities for DiT models such as HunyuanImage and Wan2.2
-  using profiling, active call chains, and version-matched MindIE-SD/torch_npu
-  contracts, with feasibility reports and adaptation/validation plans
+    using profiling, active call chains, existing-PR checks, and version-matched
+    MindIE-SD/torch_npu/vLLM-Ascend Triton contracts; compares local and larger
+    fused subgraphs, with feasibility reports and, when requested, implementation,
+  backend comparisons, accuracy/E2E validation, and NPU regression integration;
+  see its [workflow routing](performance/operators/dit-npu-fusion-analysis/references/workflow-integration.md)
+  and [versioned evidence contract](performance/operators/dit-npu-fusion-analysis/references/execution-contracts.md)
 - [`find-simplifications`](find-simplifications/SKILL.md): finds evidence-backed
   opportunities to remove or merge dead, duplicated, speculative,
   over-generalized, or unnecessarily defensive vLLM-Omni code
@@ -70,6 +97,24 @@ self-check.
   wiring (`test-ready.yml`, `test-merge.yml`, `test-nightly.yml`,
   `test-weekly.yml`), and copy-paste local plus CI-like `pytest` commands; see
   `references/test-routing.md` for level-to-command mapping
+
+## Task-to-Capability Composition
+
+Compose only the capabilities required by the task and its evidence gaps.
+These entries are guides loaded by an execution agent, not independently
+running services. RFC-proposed guides are usable only when present in the
+target checkout.
+
+| Task | Coordination / owner | Capability to compose | Completion evidence |
+| --- | --- | --- | --- |
+| Identify DiT NPU fusion opportunities | Direct caller or workload execution agent | [DiT NPU fusion](performance/operators/dit-npu-fusion-analysis/SKILL.md) | Prior-art audit, profile/source attribution, contracts, candidate and validation plans |
+| Optimize an existing diffusion model | [diffusion-perf-opt](diffusion-perf-opt/SKILL.md) or task execution agent | DiT NPU operator guidance when applicable; [testing](vllm-omni-test/SKILL.md) for required regression | Runtime route, quality claim, controlled E2E A/B, fallback/regression results |
+| Integrate a model | [add-diffusion-model](add-diffusion-model/SKILL.md) | Operator guidance after semantic/loading correctness, when needed | Integration evidence plus scoped operator validation; no repeated onboarding for existing models |
+| Qualify production behavior | [production-add-diffusion-model](production-add-diffusion-model/SKILL.md) | Applicable numerical/performance evidence and testing | Independent API, lifecycle, reliability and feature-combination qualification |
+
+The DiT operator skill returns versioned `ExecutionEvidence`. Reuse checks
+revision/configuration/workload/environment and comparison scope; a prior
+numerical pass does not establish production readiness.
 
 ## MiniMax H3 Creative Skills
 
