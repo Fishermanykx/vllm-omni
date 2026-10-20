@@ -7,21 +7,15 @@ pull request review.
 
 ## Directory Structure
 
-Each skill lives in its own directory under `.claude/skills/`, either at the
-root or within a capability layer. Following the organization proposed in
-[RFC #8856](https://github.com/vllm-project/vllm-omni/issues/8856), the Ascend diffusion
-optimization router uses this layout; other existing skills keep their paths:
+Each skill lives in its own directory under `.claude/skills/`. The Ascend
+optimization router has a single root-level skill entry for discovery:
 
 ```text
 .claude/skills/
 ├── readme.md
 ├── dit-npu-fusion-analysis/
-│   └── SKILL.md                  # Flat discovery compatibility entry
-├── performance/
-│   └── operators/
-│       └── dit-npu-fusion-analysis/
-│           ├── SKILL.md          # MindIE-SD routing instructions
-│           └── agents/openai.yaml
+│   ├── SKILL.md                  # MindIE-SD routing instructions
+│   └── agents/openai.yaml       # English UI metadata
 └── ...                          # Other existing skills
 ```
 
@@ -58,7 +52,7 @@ self-check.
   image/video performance-benchmark cases and their nightly/weekly Buildkite
   Perf coverage, using the `run_benchmark.py` config schema and a fixed
   measurement contract
-- [`dit-npu-fusion-analysis`](performance/operators/dit-npu-fusion-analysis/SKILL.md):
+- [`dit-npu-fusion-analysis`](dit-npu-fusion-analysis/SKILL.md):
   routes Ascend NPU diffusion model and operator optimization to the applicable
   MindIE-SD skill, supplying Omni context and retaining repository-local tests;
   the existing name remains a discovery entry, with optimization methods and
@@ -92,7 +86,7 @@ self-check.
 ## Ascend Optimization Routing
 
 For Ascend NPU diffusion tasks, `diffusion-perf-opt` consults the
-[MindIE-SD router](performance/operators/dit-npu-fusion-analysis/SKILL.md)
+[MindIE-SD router](dit-npu-fusion-analysis/SKILL.md)
 before hardware-specific analysis. The router locates an existing checkout or
 the official dev skill index and reads the selected instructions. It does not
 copy SD's operator catalogue, benefit model or acceptance protocol into Omni.

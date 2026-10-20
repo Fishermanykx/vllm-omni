@@ -12,7 +12,7 @@ When the task is to add or extend CI performance coverage (a benchmark config pl
 ## Ascend NPU tasks
 
 For Ascend NPU diffusion model or operator optimization, read the
-[MindIE-SD router](../performance/operators/dit-npu-fusion-analysis/SKILL.md)
+[MindIE-SD router](../dit-npu-fusion-analysis/SKILL.md)
 first and load the selected external skill. MindIE-SD owns NPU optimization
 methods and acceptance guidance; supply Omni code/workload context and keep
 Omni tests and changes in this repository. The CUDA-oriented workflow below
