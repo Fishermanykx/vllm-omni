@@ -612,6 +612,9 @@ class LingBotWorldCausalDMDPipeline(
         parallel_config = getattr(od_config, "parallel_config", None)
         self.od_config = od_config
         model_config = getattr(od_config, "model_config", None) or {}
+        fused_adaln = model_config.get("lingbot_npu_fused_adaln", False)
+        if type(fused_adaln) is not bool:
+            raise ValueError("lingbot_npu_fused_adaln must be a boolean")
         cache_block_conditions = model_config.get("lingbot_cache_block_conditions", False)
         if type(cache_block_conditions) is not bool:
             raise ValueError("lingbot_cache_block_conditions must be a boolean")
@@ -694,11 +697,12 @@ class LingBotWorldCausalDMDPipeline(
             quant_config=getattr(od_config, "quantization_config", None),
             prefix="transformer",
         )
-        if npu_host_lengths or npu_fused_rmsnorm or cache_block_conditions:
+        if npu_host_lengths or npu_fused_rmsnorm or cache_block_conditions or fused_adaln:
             self.transformer.configure_npu_optimizations(
                 host_lengths=npu_host_lengths,
                 fused_rmsnorm=npu_fused_rmsnorm,
                 cache_block_conditions=cache_block_conditions,
+                fused_adaln=fused_adaln,
             )
 
         scheduler_config = _load_json(model, "scheduler/scheduler_config.json", local_files_only)

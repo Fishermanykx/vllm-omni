@@ -1232,3 +1232,44 @@ def test_block_condition_cache_reuses_pre_sp_projections_without_changing_output
     model.configure_npu_optimizations()
     run(held)
     assert len(calls) == 3
+
+
+@pytest.mark.cpu
+@pytest.mark.parametrize("frames,tokens", [(3, 4), (12, 1)])
+@pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16])
+def test_npu_adaln_adapter_keeps_fp32_math_and_frame_or_sp_broadcast(monkeypatch, frames, tokens, dtype):
+    import sys
+    from types import ModuleType
+
+    module = attention_tests._load_module()
+    model = _tiny_model(module, num_layers=1).eval()
+    block = model.blocks[0]
+    x = torch.randn(2, frames * tokens, model.dim).to(dtype)
+    scale = torch.randn(2, frames, 1, model.dim)
+    shift = torch.randn_like(scale)
+    expected = block._normalize_modulate(block.norm1, x, scale, shift, frames, tokens)
+    provider = ModuleType("mindiesd")
+    calls = []
+
+    def fused(norm, value, gain, bias, *, fused):
+        assert fused
+        assert value.dtype == gain.dtype == bias.dtype == torch.float32
+        assert value.shape == (2 * frames, tokens, model.dim)
+        assert not norm.elementwise_affine
+        calls.append(True)
+        return norm(value) * (1 + gain[:, None, :]) + bias[:, None, :]
+
+    provider.layernorm_scale_shift = fused
+    monkeypatch.setitem(sys.modules, "mindiesd", provider)
+    actual = block._forward_npu_adaln(block.norm1, x, scale, shift, frames, tokens)
+    torch.testing.assert_close(actual, expected, rtol=0, atol=0)
+    assert calls == [True]
+    model.configure_npu_optimizations(fused_adaln=True)
+    assert block.npu_fused_adaln
+    # CPU still takes the original path even if the NPU option is set.
+    torch.testing.assert_close(
+        block._normalize_modulate(block.norm1, x, scale, shift, frames, tokens), expected, rtol=0, atol=0
+    )
+    assert calls == [True]
+    model.configure_npu_optimizations()
+    assert not block.npu_fused_adaln

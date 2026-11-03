@@ -576,6 +576,7 @@ class LingBotAttentionBlock(nn.Module):
     ) -> None:
         super().__init__()
         ffn_dim = ffn_dim or dim * 4
+        self.npu_fused_adaln = False
         self.dim = dim
         self.norm1 = LayerNorm(dim, eps=eps, elementwise_affine=False)
         self.self_attn = LingBotSelfAttention(
@@ -637,6 +638,29 @@ class LingBotAttentionBlock(nn.Module):
         self.cam_scale_layer = nn.Linear(dim, dim)
         self.cam_shift_layer = nn.Linear(dim, dim)
 
+    def _normalize_modulate(self, norm, hidden_states, scale, shift, num_frames, tokens_per_frame):
+        if self.npu_fused_adaln and hidden_states.device.type == "npu":
+            return self._forward_npu_adaln(norm, hidden_states, scale, shift, num_frames, tokens_per_frame)
+        normalized = norm(hidden_states.float()).unflatten(1, (num_frames, tokens_per_frame))
+        return (normalized * (1 + scale) + shift).flatten(1, 2).to(hidden_states.dtype)
+
+    @staticmethod
+    def _forward_npu_adaln(norm, hidden_states, scale, shift, num_frames, tokens_per_frame):
+        from mindiesd import layernorm_scale_shift
+
+        # Fold frames into batch, preserving FP32 normalization/modulation and
+        # the original single cast back to the activation dtype. This also
+        # handles SP's tokenwise timestep layout without duplicating scales.
+        batch, _, dim = hidden_states.shape
+        output = layernorm_scale_shift(
+            norm,
+            hidden_states.float().reshape(batch * num_frames, tokens_per_frame, dim),
+            scale.float().reshape(batch * num_frames, dim),
+            shift.float().reshape(batch * num_frames, dim),
+            fused=True,
+        )
+        return output.reshape(hidden_states.shape).to(hidden_states.dtype)
+
     def camera_modulation(self, camera_hidden_states: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         """Build this block's camera scale and shift from the patchified camera tokens.
 
@@ -681,8 +705,9 @@ class LingBotAttentionBlock(nn.Module):
         shift_msa, scale_msa, gate_msa, shift_ffn, scale_ffn, gate_ffn = modulation.chunk(6, dim=2)
 
         hidden_grid = hidden_states.unflatten(1, (num_frames, tokens_per_frame))
-        normalized = self.norm1(hidden_states.float()).unflatten(1, (num_frames, tokens_per_frame))
-        normalized = (normalized * (1 + scale_msa) + shift_msa).flatten(1, 2).to(hidden_states.dtype)
+        normalized = self._normalize_modulate(
+            self.norm1, hidden_states, scale_msa, shift_msa, num_frames, tokens_per_frame
+        )
         if hasattr(self, "_lingbot_leased_post_attention"):
             from vllm_omni.diffusion.models.lingbot_world.leased_post_attention import acquire
 
@@ -720,8 +745,9 @@ class LingBotAttentionBlock(nn.Module):
             hidden_states = hidden_states + attention_output
 
         hidden_grid = hidden_states.unflatten(1, (num_frames, tokens_per_frame))
-        normalized = self.norm2(hidden_states.float()).unflatten(1, (num_frames, tokens_per_frame))
-        normalized = (normalized * (1 + scale_ffn) + shift_ffn).flatten(1, 2).to(hidden_states.dtype)
+        normalized = self._normalize_modulate(
+            self.norm2, hidden_states, scale_ffn, shift_ffn, num_frames, tokens_per_frame
+        )
         ffn_output = self.ffn(normalized).unflatten(1, (num_frames, tokens_per_frame))
         hidden_states = (hidden_grid + ffn_output * gate_ffn).flatten(1, 2).to(hidden_states.dtype)
         return hidden_states, cast(LingBotAttentionCache, cross_cache)
@@ -1030,18 +1056,26 @@ class CausalLingBotWorldTransformer3DModel(nn.Module):
         return buffer
 
     def configure_npu_optimizations(
-        self, *, host_lengths: bool = False, fused_rmsnorm: bool = False, cache_block_conditions: bool = False
+        self,
+        *,
+        host_lengths: bool = False,
+        fused_rmsnorm: bool = False,
+        cache_block_conditions: bool = False,
+        fused_adaln: bool = False,
     ) -> None:
         """Enable experimental providers without changing checkpoint parameters.
 
         Configure before compilation/capture. Numerical and performance
         acceptance on the deployment's NPU remains a separate requirement.
         """
-        if any(type(option) is not bool for option in (host_lengths, fused_rmsnorm, cache_block_conditions)):
+        if any(
+            type(option) is not bool for option in (host_lengths, fused_rmsnorm, cache_block_conditions, fused_adaln)
+        ):
             raise ValueError("LingBot NPU optimization options must be booleans")
         self.cache_block_conditions = cache_block_conditions
         self.npu_host_lengths = host_lengths
         for block in self.blocks:
+            block.npu_fused_adaln = fused_adaln
             block.self_attn.npu_host_lengths = host_lengths
         for module in self.modules():
             if isinstance(module, _LingBotRMSNorm):
