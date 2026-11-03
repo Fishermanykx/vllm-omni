@@ -756,6 +756,7 @@ def _npu_paged_attention(
         and stage_value.numel() > 0
     )
     if staging:
+        assert stage_key is not None and stage_value is not None
         capacity = num_blocks * block_size
         if stage_key.shape[0] < capacity or stage_value.shape[0] < capacity:
             raise ValueError("NPU staging buffers must hold the padded visible window")

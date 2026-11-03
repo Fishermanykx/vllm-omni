@@ -61,7 +61,7 @@ def test_npu_host_lengths_preserve_gather_without_device_readback(monkeypatch, b
         torch.testing.assert_close(v, expected_v)
         return (_dense_attention(q.unsqueeze(0), k.unsqueeze(0), v.unsqueeze(0))[0],)
 
-    provider.npu_fusion_attention = attention
+    setattr(provider, "npu_fusion_attention", attention)
     monkeypatch.setitem(sys.modules, "torch_npu", provider)
     kwargs = dict(
         block_table=table,
@@ -1420,7 +1420,7 @@ def test_contiguous_kv_gather_path_matches_paged_path_gpu(monkeypatch, history_c
 def test_npu_host_lengths_staging_refreshes_partial_boundary_and_reuses_prefix(monkeypatch):
     monkeypatch.setattr(paged_attention_module, "contiguous_kv_gather_enabled", lambda: True)
     provider = ModuleType("torch_npu")
-    provider.npu_fusion_attention = lambda q, k, v, **kw: (k.clone(),)
+    setattr(provider, "npu_fusion_attention", lambda q, k, v, **kw: (k.clone(),))
     monkeypatch.setitem(sys.modules, "torch_npu", provider)
     keys = torch.randn(4, 4, 1, 2)
     values = torch.randn_like(keys)
@@ -1456,11 +1456,12 @@ def test_npu_host_lengths_staging_refreshes_partial_boundary_and_reuses_prefix(m
 @pytest.mark.cpu
 def test_npu_host_lengths_ragged_context_reuse_and_session_reset():
     manager, adapter, state = ModuleType("manager"), ModuleType("adapter"), ModuleType("state")
-    adapter.num_computed_tokens = 5
-    state.adapter = state.signature = None
-    manager.block_size = 4
-    manager.history_staging = [(torch.empty(16, 1, 2), torch.empty(16, 1, 2))]
-    manager.history_staging_state = state
+    setattr(adapter, "num_computed_tokens", 5)
+    setattr(state, "adapter", None)
+    setattr(state, "signature", None)
+    setattr(manager, "block_size", 4)
+    setattr(manager, "history_staging", [(torch.empty(16, 1, 2), torch.empty(16, 1, 2))])
+    setattr(manager, "history_staging_state", state)
     context = paged_attention_module.ARDiffusionPagedForwardContext(
         kv_cache=manager,
         adapter=adapter,
@@ -1482,7 +1483,7 @@ def test_npu_host_lengths_ragged_context_reuse_and_session_reset():
     context._prepare_history_staging(0)  # existing CUDA/CPU ragged policy stays conservative
     assert not context.reuse_history
     replacement = ModuleType("replacement")
-    replacement.num_computed_tokens = 5
+    setattr(replacement, "num_computed_tokens", 5)
     context.adapter = replacement
     context._prepare_history_staging(0, allow_partial_blocks=True)
     assert not context.reuse_history

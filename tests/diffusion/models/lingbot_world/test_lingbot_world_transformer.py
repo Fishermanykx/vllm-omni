@@ -480,7 +480,7 @@ def test_npu_rms_norm_provider_normalizes_flat_projection(monkeypatch) -> None:
         calls.append((x.shape, weight.shape, epsilon))
         return (torch.nn.functional.rms_norm(x, (8,), weight, epsilon),)
 
-    provider.npu_rms_norm = rms_norm
+    setattr(provider, "npu_rms_norm", rms_norm)
     monkeypatch.setitem(sys.modules, "torch_npu", provider)
     expected = norm(value)
     torch.testing.assert_close(norm._forward_npu(value), expected)
@@ -1259,7 +1259,7 @@ def test_npu_adaln_adapter_keeps_fp32_math_and_frame_or_sp_broadcast(monkeypatch
         calls.append(True)
         return norm(value) * (1 + gain[:, None, :]) + bias[:, None, :]
 
-    provider.layernorm_scale_shift = fused
+    setattr(provider, "layernorm_scale_shift", fused)
     monkeypatch.setitem(sys.modules, "mindiesd", provider)
     actual = block._forward_npu_adaln(block.norm1, x, scale, shift, frames, tokens)
     torch.testing.assert_close(actual, expected, rtol=0, atol=0)
