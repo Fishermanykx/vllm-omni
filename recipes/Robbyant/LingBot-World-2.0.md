@@ -73,30 +73,6 @@ This experimental mode stores the final noisy probe's KV rather than clean
 `x0` KV, so generated outputs can differ. The four denoising steps, chunk
 boundaries, and paged-context finalization remain the same.
 
-## Experimental NPU primitives
-
-Two independent, default-disabled `model_config` options are available for
-device validation. Neither requires the proposed MindIE-SD compile backend:
-
-```yaml
-model_config:
-  lingbot_npu_host_lengths: false
-  lingbot_npu_fused_rmsnorm: false
-```
-
-`lingbot_npu_host_lengths` passes the singleton forward's valid query/KV
-lengths from the CPU context to NPU paged attention, avoiding per-layer
-device-to-host length reads. Padded block-table capacity is not a valid KV
-length. CUDA/ROCm keep their existing custom-op schema. The non-paged replay
-path uses the visible tensor lengths instead.
-
-`lingbot_npu_fused_rmsnorm` selects `torch_npu.npu_rms_norm` for BF16/FP16 NPU
-projections at TP1. It normalizes across the flattened projection width,
-not separately within each attention head. TP greater than one and other
-devices/dtypes retain the original global-square-sum implementation. Different
-reduction/rounding can change outputs; enabling the flag requires numerical
-and full-session quality validation, not just successful inference.
-
 ## Experimental Ascend SP8 output paths
 
 Two independent, default-disabled options are available for the eight-rank
@@ -375,6 +351,48 @@ The exercised matrix includes:
 Official `generate.py` accuracy and performance numbers, together with
 generation artifacts, are recorded in the PR validation section for the exact
 tested commit.
+
+## Experimental NPU optimization preparation
+
+These options default to false and require deployment-specific numerical and
+performance validation. They do not establish NPU support or depend on PR #7580.
+Set options in the diffusion stage's `model_config` before compile or capture:
+
+| Option | Effect | Boundary |
+| --- | --- | --- |
+| `lingbot_npu_host_lengths` | Pass host-owned valid sequence lengths to FA | Singleton paged/direct replay |
+| `lingbot_npu_fused_rmsnorm` | Use `torch_npu.npu_rms_norm` on flat Q/K projections | TP1, NPU FP16/BF16; TP>1 keeps reduction |
+| `lingbot_npu_fused_adaln` | Use MindIE-SD `layernorm_scale_shift` for norm1/norm2 | FP32 math and final activation cast preserved |
+| `lingbot_cache_block_conditions` | Reuse pre-SP camera projection and absolute RoPE | One caller-owned immutable AR block cache |
+
+Create a fresh `CameraModulationCache` for each AR block and after changing
+conditioning or weights. Preparation reuse is bypassed with gradients enabled.
+AdaLN requires a MindIE-SD version whose device kernel accepts FP32 input and
+modulation; explicitly enabling it exposes provider failures rather than
+silently downcasting the model's FP32 path.
+
+History staging uses existing `model_config.ar_diffusion_kv_config.reuse_history_staging: true`
+and `VLLM_OMNI_AR_DIFFUSION_KV_GATHER=1`. It allocates two maximum-window buffers
+per layer/rank. NPU refreshes the whole block containing the first current token,
+including any shared history tail; complete earlier blocks are retained only
+within the same session and unchanged window. The host-length option is optional
+for staging. Session/window changes trigger a full restage. CUDA/ROCm retain their
+existing conservative policy for partial blocks.
+
+Weight-free operator checks, including allocation cost and raw timing samples:
+
+```bash
+python benchmarks/lingbot_world/benchmark_npu_primitives.py \
+  --sp-degree 4 --history-staging --include-adaln --output /tmp/lingbot-npu.json
+```
+
+Run each option separately and combined against the default using the same
+checkpoint, seed, camera, four DMD steps and session length. Check TP1/SP4 and
+TP2/SP2, first/steady blocks, sliding/reset/interleaved sessions, full-layer
+intermediates and complete latent videos. Record max absolute/relative error,
+non-finite values, quality, peak memory and unprofiled end-to-end latency.
+Microbenchmarks alone cannot establish model quality, graph compatibility or
+speedup. NPU acceptance of this preparation remains pending.
 
 ## Current limitations
 

@@ -214,10 +214,20 @@ LingBot's default-disabled `lingbot_npu_host_lengths` option carries the
 singleton forward's CPU-owned valid query/KV lengths into its paged layer
 inputs. The values are rebuilt from each forward context after `prepare()`;
 they are not process-global or inferred from padded block-table capacity.
-NPU dispatch uses a separate custom op with explicit mutable KV pools, while
+NPU dispatch uses a separate custom op with explicit mutable KV pools and
+staging buffers, while
 the CUDA/ROCm custom-op schema remains unchanged. Direct replay derives the
 same lengths from its visible tensor shapes. The option changes neither KV
 ownership nor clean/noisy commit, sliding-window, or session semantics.
+
+The existing opt-in history-staging allocation can also serve NPU attention.
+Session identity, visible history, computed-token count and sequence bounds
+must match before retaining a prefix. NPU refreshes every current block,
+including the first block shared with history and the partial last block;
+`stage_first_block` counts visible blocks before that boundary, excluding
+trailing table padding. A session/window change forces full staging. CUDA/ROCm
+retain full restaging for non-aligned chunks. Staging is scratch state, never
+committed KV; its allocation remains part of the manager's memory budget.
 
 ## Non-goals
 
