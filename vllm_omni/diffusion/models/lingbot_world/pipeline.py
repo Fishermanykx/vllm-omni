@@ -702,6 +702,13 @@ class LingBotWorldCausalDMDPipeline(
         )
         if not managed_component_placement:
             self.vae = self.vae.to(self.device)
+        original_wan_norm = model_config.get("lingbot_vae_original_norm", False)
+        if type(original_wan_norm) is not bool:
+            raise ValueError("lingbot_vae_original_norm must be boolean")
+        if original_wan_norm:
+            from .npu_vae_original_norm import install_original_wan_norm
+
+            logger.info("LingBot instance-local original Wan norms: %d", install_original_wan_norm(self.vae))
 
         transformer_config = load_transformer_config(model, "transformer", local_files_only)
         from .npu_quantization import online_mxfp8_config

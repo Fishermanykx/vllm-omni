@@ -1,5 +1,22 @@
 # LingBot Wan VAE fusion on Ascend950PR
 
+## Loader contract
+
+The full NPU serving loader imports Wan2.2, whose package initialization globally
+replaces the diffusers norm constructor with `RMSNormVAE`. This is not the L2
+expression used by the direct diffusers single-VAE tests. The fusion installer
+intentionally rejects an unrestored RMSNormVAE rather than silently reinterpreting
+its epsilon and intermediate rounding.
+
+Explicitly set `lingbot_vae_original_norm: true` to restore the original Wan
+expression on the loaded LingBot VAE instance (encoder and decoder). Parameters
+and checkpoint names are retained; other VAE instances and global constructors
+are not modified. Default is false. This is a distinct numerical configuration:
+rebaseline with the same flag before attributing any latency/quality changes to
+fusion. Earlier direct-diffusers single-VAE numbers do not establish gains over
+the framework's patched default. Full serving validation must exercise this
+loader path, not just instantiate `AutoencoderKLWan` directly.
+
 ## Epilogue adaptation
 
 Enable `lingbot_npu_vae_norm_silu: true` in model_config, with

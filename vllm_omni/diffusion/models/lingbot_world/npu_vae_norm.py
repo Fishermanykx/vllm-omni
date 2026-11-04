@@ -38,6 +38,8 @@ def validate_norm_backend(backend):
 def install_norm_silu(vae, *, backend="epilogue"):
     """Only original diffusers norms; never reinterpret RMSNormVAE's epsilon."""
     validate_norm_backend(backend)
+    from vllm_omni.diffusion.models.lingbot_world.npu_vae_original_norm import is_restored_original_norm
+
     targets = []
     for block in vae.decoder.modules():
         name = type(block).__name__
@@ -51,11 +53,16 @@ def install_norm_silu(vae, *, backend="epilogue"):
             raise ValueError("Wan norm fusion requires plain out-of-place SiLU")
         norms = [getattr(block, item) for item in names]
         for norm in norms:
+            restored = is_restored_original_norm(norm)
+            if type(norm).__name__ == "RMSNormVAE" and not restored:
+                raise ValueError(
+                    "Framework RMSNormVAE is not original Wan norm: explicitly enable "
+                    "lingbot_vae_original_norm and rebaseline before fusion"
+                )
             if (
-                type(norm).__name__ != "WanRMS_norm"
+                (type(norm).__name__ != "WanRMS_norm" and not restored)
                 or not norm.channel_first
-                or not isinstance(norm.bias, float)
-                or norm.bias != 0.0
+                or not (norm.bias is None and restored or isinstance(norm.bias, float) and norm.bias == 0.0)
                 or norm._forward_hooks
                 or norm._forward_pre_hooks
                 or hasattr(norm, "_lingbot_native_norm_forward")
