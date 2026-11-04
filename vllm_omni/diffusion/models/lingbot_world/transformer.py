@@ -224,6 +224,7 @@ class LingBotSelfAttention(nn.Module):
         self.num_sp_heads = self.num_local_heads // self.ulysses_world_size
         self.tp_inner_dim = self.num_local_heads * self.head_dim
         self.npu_qbsa_cdf = 0.0
+        self.npu_fused_qkv = False
         self.npu_host_lengths = False
         self.o = RowParallelLinear(
             dim,
@@ -344,14 +345,24 @@ class LingBotSelfAttention(nn.Module):
         # Project logical [B, S, D] tokens into TP-local
         # [B, S, num_local_heads, head_dim].
         qkv, _ = self.qkv(hidden_states)
-        query, key, value = qkv.split((self.tp_inner_dim, self.tp_inner_dim, self.tp_inner_dim), dim=-1)
-        query = self.norm_q(query)
-        key = self.norm_k(key)
+        fused_qkv = self.npu_fused_qkv and qkv.device.type == "npu" and rotary_emb is not None
+        if fused_qkv:
+            if get_tensor_model_parallel_world_size() != 1:
+                raise ValueError("LingBot QKV fusion currently requires TP1")
+            from vllm_omni.diffusion.models.lingbot_world.npu_qkv import split_qkv_wan_npu
+
+            query, key, value = split_qkv_wan_npu(
+                qkv, self.norm_q.weight, self.norm_k.weight, *rotary_emb, eps=self.norm_q.eps
+            )
+        else:
+            query, key, value = qkv.split((self.tp_inner_dim, self.tp_inner_dim, self.tp_inner_dim), dim=-1)
+            query = self.norm_q(query)
+            key = self.norm_k(key)
 
         query = query.unflatten(2, (self.num_local_heads, self.head_dim))
         key = key.unflatten(2, (self.num_local_heads, self.head_dim))
         value = value.unflatten(2, (self.num_local_heads, self.head_dim))
-        if rotary_emb is not None:
+        if rotary_emb is not None and not fused_qkv:
             cos, sin = rotary_emb
             query = self.rotary_embedding(query, cos, sin)
             key = self.rotary_embedding(key, cos, sin)
@@ -1067,6 +1078,7 @@ class CausalLingBotWorldTransformer3DModel(nn.Module):
         cache_block_conditions: bool = False,
         fused_adaln: bool = False,
         qbsa_cdf: float | None = None,
+        fused_qkv: bool = False,
     ) -> None:
         """Enable experimental providers without changing checkpoint parameters.
 
@@ -1074,7 +1086,8 @@ class CausalLingBotWorldTransformer3DModel(nn.Module):
         acceptance on the deployment's NPU remains a separate requirement.
         """
         if any(
-            type(option) is not bool for option in (host_lengths, fused_rmsnorm, cache_block_conditions, fused_adaln)
+            type(option) is not bool
+            for option in (host_lengths, fused_rmsnorm, cache_block_conditions, fused_adaln, fused_qkv)
         ):
             raise ValueError("LingBot NPU optimization options must be booleans")
         self.npu_qbsa_cdf = 0.0
@@ -1086,6 +1099,7 @@ class CausalLingBotWorldTransformer3DModel(nn.Module):
         self.cache_block_conditions = cache_block_conditions
         self.npu_host_lengths = host_lengths
         for block in self.blocks:
+            block.self_attn.npu_fused_qkv = fused_qkv
             block.self_attn.npu_qbsa_cdf = self.npu_qbsa_cdf
             block.npu_fused_adaln = fused_adaln
             block.self_attn.npu_host_lengths = host_lengths
