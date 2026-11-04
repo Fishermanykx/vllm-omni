@@ -11,7 +11,14 @@ import torch.nn.functional as F
 def _norm_silu(self, x):
     if x.device.type not in ("npu", "privateuseone") or torch.is_grad_enabled():
         return F.silu(self._lingbot_norm_forward(x))
-    if x.dtype != torch.bfloat16 or self.gamma.dtype != x.dtype or x.ndim not in (4, 5):
+    if (
+        x.dtype != torch.bfloat16
+        or self.gamma.dtype != x.dtype
+        or x.ndim not in (4, 5)
+        or not x.is_contiguous()
+        or x.numel() == 0
+        or torch.compiler.is_compiling()
+    ):
         return F.silu(self._lingbot_norm_forward(x))
     from vllm_omni.diffusion.models.lingbot_world.npu_vae_norm_triton import norm_silu
 
@@ -44,6 +51,7 @@ def install_norm_silu(vae):
                 or norm.bias != 0.0
                 or norm._forward_hooks
                 or norm._forward_pre_hooks
+                or hasattr(norm, "_lingbot_native_norm_forward")
             ):
                 raise ValueError("Wan norm fusion requires original channel-first WanRMS_norm without hooks/bias")
             if hasattr(norm, "_lingbot_norm_forward"):
