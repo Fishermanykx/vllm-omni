@@ -722,6 +722,7 @@ def _npu_paged_attention(
     stage_value: torch.Tensor | None = None,
     reuse_history: bool = False,
     stage_first_block: int = 0,
+    npu_qbsa_cdf: float = 0.0,
 ) -> torch.Tensor:
     """Gather the visible window and attend, optionally without device readback.
 
@@ -782,6 +783,16 @@ def _npu_paged_attention(
         kv_len = int(seq_lens[0].item())
         actual_seq_q = (query_start_loc[1:] - query_start_loc[:-1]).to(torch.int32).cpu().tolist()
         actual_seq_kv = seq_lens.to(torch.int32).cpu().tolist()
+    if npu_qbsa_cdf:
+        from vllm_omni.diffusion.models.lingbot_world.npu_qbsa import eagle_qbsa_attention
+
+        return eagle_qbsa_attention(
+            query_flat,
+            gathered_k[:kv_len],
+            gathered_v[:kv_len],
+            cdf=npu_qbsa_cdf,
+            scale=softmax_scale,
+        ).reshape(query.shape)
     out = torch_npu.npu_fusion_attention(
         query_flat.contiguous(),
         gathered_k[:kv_len].contiguous(),
@@ -814,6 +825,7 @@ def ar_diffusion_paged_attention(
     current_tokens: int = 0,
     stage_first_block: int = 0,
     npu_lengths: tuple[int, int] | None = None,
+    npu_qbsa_cdf: float = 0.0,
 ) -> torch.Tensor:
     """Run non-causal paged attention over a vLLM block table.
 
@@ -828,6 +840,8 @@ def ar_diffusion_paged_attention(
         query_flat = query
 
     if query_flat.device.type == "npu":
+        if npu_qbsa_cdf and causal:
+            raise ValueError("LingBot QBSA requires noncausal attention within the current block")
         return _npu_paged_attention(
             query,
             key_cache,
@@ -838,6 +852,7 @@ def ar_diffusion_paged_attention(
             max_seq_len=max_seq_len,
             softmax_scale=softmax_scale,
             host_lengths=npu_lengths,
+            npu_qbsa_cdf=npu_qbsa_cdf,
             stage_key=stage_key,
             stage_value=stage_value,
             reuse_history=reuse_history,
@@ -1017,6 +1032,7 @@ def _paged_write_attn_impl(
     reuse_history: bool = False,
     stage_first_block: int = 0,
     npu_lengths: tuple[int, int] | None = None,
+    npu_qbsa_cdf: float = 0.0,
 ) -> torch.Tensor:
     key_pool[video_slots] = k_curr.to(key_pool.dtype)
     value_pool[video_slots] = v_curr.to(value_pool.dtype)
@@ -1042,6 +1058,7 @@ def _paged_write_attn_impl(
         current_tokens=int(k_curr.shape[0]),
         stage_first_block=stage_first_block,
         npu_lengths=npu_lengths,
+        npu_qbsa_cdf=npu_qbsa_cdf,
     )
 
 
@@ -1156,6 +1173,7 @@ if not hasattr(torch.ops.vllm_omni, "ar_diffusion_npu_paged_write_attn"):
         stage_value: torch.Tensor,
         reuse_history: bool,
         stage_first_block: int,
+        npu_qbsa_cdf: float = 0.0,
     ) -> torch.Tensor:
         return _paged_write_attn_impl(
             query,
@@ -1179,6 +1197,7 @@ if not hasattr(torch.ops.vllm_omni, "ar_diffusion_npu_paged_write_attn"):
             reuse_history=reuse_history,
             stage_first_block=stage_first_block,
             npu_lengths=(query_len, kv_len),
+            npu_qbsa_cdf=npu_qbsa_cdf,
         )
 
     @_npu_paged_write_attn_op.register_fake
@@ -1205,14 +1224,25 @@ if not hasattr(torch.ops.vllm_omni, "ar_diffusion_npu_paged_write_attn"):
         stage_value,
         reuse_history,
         stage_first_block,
+        npu_qbsa_cdf=0.0,
     ):
         return torch.empty_like(query)
 
 
 def paged_write_attn(
-    inputs: ARDiffusionPagedLayerInputs, query, k_curr, v_curr, k_act, v_act, softmax_scale: float
+    inputs: ARDiffusionPagedLayerInputs,
+    query,
+    k_curr,
+    v_curr,
+    k_act,
+    v_act,
+    softmax_scale: float,
+    *,
+    npu_qbsa_cdf: float = 0.0,
 ) -> torch.Tensor:
     """Model-facing entry: routes through the custom op (traceable in fullgraph)."""
+    if npu_qbsa_cdf and query.device.type == "npu" and inputs.npu_lengths is None:
+        raise ValueError("LingBot QBSA requires host-owned singleton lengths")
     if inputs.npu_lengths is not None and query.device.type == "npu":
         return torch.ops.vllm_omni.ar_diffusion_npu_paged_write_attn(
             query,
@@ -1236,6 +1266,7 @@ def paged_write_attn(
             inputs.stage_value,
             inputs.reuse_history,
             inputs.stage_first_block,
+            npu_qbsa_cdf,
         )
     return torch.ops.vllm_omni.ar_diffusion_paged_write_attn(
         query,

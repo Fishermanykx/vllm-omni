@@ -419,14 +419,17 @@ def test_self_attention_uses_one_fused_qkv_projection() -> None:
     assert attention.qkv.calls == 1
 
 
-def test_self_attention_routes_paged_inputs_through_engine_owned_cache() -> None:
+@pytest.mark.parametrize("qbsa_cdf", [0.0, 0.85])
+def test_self_attention_routes_paged_inputs_through_engine_owned_cache(qbsa_cdf) -> None:
     module = _load_module()
     attention = module.LingBotSelfAttention(dim=2, num_heads=1)
+    attention.npu_qbsa_cdf = qbsa_cdf
     _set_identity_attention(attention)
     paged_inputs = module.ARDiffusionPagedLayerInputs()
     calls = []
 
-    def paged_write(inputs, query, key, value, k_act, v_act, scale):
+    def paged_write(inputs, query, key, value, k_act, v_act, scale, *, npu_qbsa_cdf=0.0):
+        assert npu_qbsa_cdf == qbsa_cdf
         calls.append((inputs, query.clone(), key.clone(), value.clone(), k_act, v_act, scale))
         return query
 

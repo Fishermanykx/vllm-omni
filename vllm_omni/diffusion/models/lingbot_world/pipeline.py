@@ -612,6 +612,13 @@ class LingBotWorldCausalDMDPipeline(
         parallel_config = getattr(od_config, "parallel_config", None)
         self.od_config = od_config
         model_config = getattr(od_config, "model_config", None) or {}
+        qbsa_cdf = model_config.get("lingbot_npu_qbsa_cdf")
+        if qbsa_cdf is not None:
+            from .npu_qbsa import validate_cdf
+
+            validate_cdf(qbsa_cdf)
+            if not od_config.enforce_eager:
+                raise ValueError("lingbot_npu_qbsa_cdf currently requires enforce_eager=true")
         fused_adaln = model_config.get("lingbot_npu_fused_adaln", False)
         if type(fused_adaln) is not bool:
             raise ValueError("lingbot_npu_fused_adaln must be a boolean")
@@ -697,12 +704,13 @@ class LingBotWorldCausalDMDPipeline(
             quant_config=getattr(od_config, "quantization_config", None),
             prefix="transformer",
         )
-        if npu_host_lengths or npu_fused_rmsnorm or cache_block_conditions or fused_adaln:
+        if npu_host_lengths or npu_fused_rmsnorm or cache_block_conditions or fused_adaln or qbsa_cdf is not None:
             self.transformer.configure_npu_optimizations(
                 host_lengths=npu_host_lengths,
                 fused_rmsnorm=npu_fused_rmsnorm,
                 cache_block_conditions=cache_block_conditions,
                 fused_adaln=fused_adaln,
+                qbsa_cdf=qbsa_cdf,
             )
 
         scheduler_config = _load_json(model, "scheduler/scheduler_config.json", local_files_only)

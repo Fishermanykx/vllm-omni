@@ -1273,3 +1273,27 @@ def test_npu_adaln_adapter_keeps_fp32_math_and_frame_or_sp_broadcast(monkeypatch
     assert calls == [True]
     model.configure_npu_optimizations()
     assert not block.npu_fused_adaln
+
+
+@pytest.mark.cpu
+def test_qbsa_configuration_is_opt_in_and_enables_host_lengths(monkeypatch):
+    import sys
+    from types import ModuleType
+
+    module = attention_tests._load_module()
+    model = _tiny_model(module, num_layers=1)
+    adapter = ModuleType("vllm_omni.diffusion.models.lingbot_world.npu_qbsa")
+
+    def validate(cdf):
+        if cdf != 0.85:
+            raise ValueError("invalid CDF")
+        return cdf
+
+    setattr(adapter, "validate_cdf", validate)
+    monkeypatch.setitem(sys.modules, adapter.__name__, adapter)
+    assert model.npu_qbsa_cdf == 0.0
+    model.configure_npu_optimizations(qbsa_cdf=0.85)
+    assert model.npu_host_lengths and model.npu_qbsa_cdf == 0.85
+    assert all(b.self_attn.npu_qbsa_cdf == 0.85 and b.self_attn.npu_host_lengths for b in model.blocks)
+    model.configure_npu_optimizations()
+    assert model.npu_qbsa_cdf == 0.0 and not model.npu_host_lengths

@@ -1489,3 +1489,36 @@ def test_npu_host_lengths_ragged_context_reuse_and_session_reset():
     assert not context.reuse_history
     context._prepare_history_staging(1, allow_partial_blocks=True)
     assert not context.staging_enabled
+
+
+@pytest.mark.cpu
+def test_npu_host_lengths_qbsa_uses_valid_rectangular_window(monkeypatch):
+    adapter = ModuleType("vllm_omni.diffusion.models.lingbot_world.npu_qbsa")
+    q = torch.randn(3, 2, 128)
+    k = torch.randn(3, 4, 2, 128)
+    v = torch.randn_like(k)
+    seen = []
+
+    def qbsa(query, key, value, *, cdf, scale):
+        seen.append((cdf, scale))
+        torch.testing.assert_close(key, k[[2, 0, 1]].flatten(0, 1)[:5])
+        torch.testing.assert_close(value, v[[2, 0, 1]].flatten(0, 1)[:5])
+        return query.clone()
+
+    setattr(adapter, "eagle_qbsa_attention", qbsa)
+    monkeypatch.setitem(sys.modules, adapter.__name__, adapter)
+    monkeypatch.setitem(sys.modules, "torch_npu", ModuleType("torch_npu"))
+    out = paged_attention_module._npu_paged_attention(
+        q,
+        k,
+        v,
+        block_table=torch.tensor([[2, 0, 1]]),
+        query_start_loc=torch.tensor([0, 3]),
+        seq_lens=torch.tensor([5]),
+        max_seq_len=12,
+        softmax_scale=128**-0.5,
+        host_lengths=(3, 5),
+        npu_qbsa_cdf=0.85,
+    )
+    torch.testing.assert_close(out, q)
+    assert seen == [(0.85, 128**-0.5)]

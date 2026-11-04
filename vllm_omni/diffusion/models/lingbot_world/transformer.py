@@ -223,6 +223,7 @@ class LingBotSelfAttention(nn.Module):
             )
         self.num_sp_heads = self.num_local_heads // self.ulysses_world_size
         self.tp_inner_dim = self.num_local_heads * self.head_dim
+        self.npu_qbsa_cdf = 0.0
         self.npu_host_lengths = False
         self.o = RowParallelLinear(
             dim,
@@ -380,6 +381,7 @@ class LingBotSelfAttention(nn.Module):
                 None,
                 None,
                 self.head_dim**-0.5,
+                npu_qbsa_cdf=self.npu_qbsa_cdf,
             ).unsqueeze(0)
         else:
             # The direct path sees history + current K/V even when the caller
@@ -427,6 +429,7 @@ class LingBotSelfAttention(nn.Module):
                     max_query_len=query.shape[1],
                     max_seq_len=visible_key.shape[1],
                     softmax_scale=self.head_dim**-0.5,
+                    npu_qbsa_cdf=self.npu_qbsa_cdf,
                     npu_lengths=(query.shape[1], visible_key.shape[1])
                     if self.npu_host_lengths and query.device.type == "npu"
                     else None,
@@ -1024,6 +1027,7 @@ class CausalLingBotWorldTransformer3DModel(nn.Module):
             ]
         )
         self.head = _LingBotHead(dim, out_channels, patch_size, eps)
+        self.npu_qbsa_cdf = 0.0
         self.npu_host_lengths = False
         self.cache_block_conditions = False
 
@@ -1062,6 +1066,7 @@ class CausalLingBotWorldTransformer3DModel(nn.Module):
         fused_rmsnorm: bool = False,
         cache_block_conditions: bool = False,
         fused_adaln: bool = False,
+        qbsa_cdf: float | None = None,
     ) -> None:
         """Enable experimental providers without changing checkpoint parameters.
 
@@ -1072,9 +1077,16 @@ class CausalLingBotWorldTransformer3DModel(nn.Module):
             type(option) is not bool for option in (host_lengths, fused_rmsnorm, cache_block_conditions, fused_adaln)
         ):
             raise ValueError("LingBot NPU optimization options must be booleans")
+        self.npu_qbsa_cdf = 0.0
+        if qbsa_cdf is not None:
+            from vllm_omni.diffusion.models.lingbot_world.npu_qbsa import validate_cdf
+
+            self.npu_qbsa_cdf = validate_cdf(qbsa_cdf)
+        host_lengths = host_lengths or bool(self.npu_qbsa_cdf)
         self.cache_block_conditions = cache_block_conditions
         self.npu_host_lengths = host_lengths
         for block in self.blocks:
+            block.self_attn.npu_qbsa_cdf = self.npu_qbsa_cdf
             block.npu_fused_adaln = fused_adaln
             block.self_attn.npu_host_lengths = host_lengths
         for module in self.modules():
