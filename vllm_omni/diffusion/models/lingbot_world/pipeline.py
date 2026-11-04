@@ -613,6 +613,11 @@ class LingBotWorldCausalDMDPipeline(
         self.od_config = od_config
         model_config = getattr(od_config, "model_config", None) or {}
         qbsa_cdf = model_config.get("lingbot_npu_qbsa_cdf")
+        fused_qkv = model_config.get("lingbot_npu_fused_qkv", False)
+        if type(fused_qkv) is not bool:
+            raise ValueError("lingbot_npu_fused_qkv must be boolean")
+        if fused_qkv and not od_config.enforce_eager:
+            raise ValueError("lingbot_npu_fused_qkv currently requires enforce_eager=true")
         if qbsa_cdf is not None:
             from .npu_qbsa import validate_cdf
 
@@ -699,18 +704,36 @@ class LingBotWorldCausalDMDPipeline(
             self.vae = self.vae.to(self.device)
 
         transformer_config = load_transformer_config(model, "transformer", local_files_only)
+        from .npu_quantization import online_mxfp8_config
+
+        online_quant = model_config.get("lingbot_npu_online_quant")
+        if online_quant is not None and self.device.type not in ("npu", "privateuseone"):
+            raise ValueError("lingbot_npu_online_quant requires the NPU backend")
+        quant_config = online_mxfp8_config(
+            online_quant,
+            getattr(od_config, "quantization_config", None),
+            num_layers=transformer_config.get("num_layers", 40),
+        )
         self.transformer = CausalLingBotWorldTransformer3DModel.from_config(
             transformer_config,
-            quant_config=getattr(od_config, "quantization_config", None),
+            quant_config=quant_config,
             prefix="transformer",
         )
-        if npu_host_lengths or npu_fused_rmsnorm or cache_block_conditions or fused_adaln or qbsa_cdf is not None:
+        if (
+            npu_host_lengths
+            or npu_fused_rmsnorm
+            or cache_block_conditions
+            or fused_adaln
+            or qbsa_cdf is not None
+            or fused_qkv
+        ):
             self.transformer.configure_npu_optimizations(
                 host_lengths=npu_host_lengths,
                 fused_rmsnorm=npu_fused_rmsnorm,
                 cache_block_conditions=cache_block_conditions,
                 fused_adaln=fused_adaln,
                 qbsa_cdf=qbsa_cdf,
+                fused_qkv=fused_qkv,
             )
 
         scheduler_config = _load_json(model, "scheduler/scheduler_config.json", local_files_only)
@@ -766,6 +789,24 @@ class LingBotWorldCausalDMDPipeline(
         if sequence_parallel_size > 1 and vae_sharding:
             self._install_sharded_vae_decode(sequence_parallel_size)
         fast_path_level = _vae_decode_fast_path(model_config)
+        npu_spatial_padding = model_config.get("lingbot_npu_vae_spatial_padding", False)
+        if type(npu_spatial_padding) is not bool:
+            raise ValueError("lingbot_npu_vae_spatial_padding must be boolean")
+        if npu_spatial_padding:
+            if vae_sharding or fast_path_level is not None:
+                raise ValueError("NPU VAE spatial padding requires unsharded VAE and no other decoder fast path")
+            from .npu_vae import install_spatial_padding
+
+            logger.info("LingBot NPU VAE padding: %d convolutions", install_spatial_padding(self.vae))
+        npu_vae_norm = model_config.get("lingbot_npu_vae_norm_silu", False)
+        if type(npu_vae_norm) is not bool:
+            raise ValueError("lingbot_npu_vae_norm_silu must be boolean")
+        if npu_vae_norm:
+            if vae_sharding or fast_path_level is not None:
+                raise ValueError("NPU VAE norm fusion requires unsharded VAE and no other decoder fast path")
+            from .npu_vae_norm import install_norm_silu
+
+            logger.info("LingBot NPU VAE norm+SiLU: %d pairs", install_norm_silu(self.vae))
         if fast_path_level is not None:
             # Install after sharding so its conv wrappers get persistent buffers. The VAE parameters
             # already use the stage dtype, so no autocast parameter cast is needed.
