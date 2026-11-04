@@ -800,6 +800,15 @@ class LingBotWorldCausalDMDPipeline(
 
             logger.info("LingBot NPU VAE padding: %d convolutions", install_spatial_padding(self.vae))
         npu_vae_norm = model_config.get("lingbot_npu_vae_norm_silu", False)
+        native_vae_norm = model_config.get("lingbot_npu_vae_native_norm", False)
+        if type(native_vae_norm) is not bool:
+            raise ValueError("lingbot_npu_vae_native_norm must be boolean")
+        if native_vae_norm:
+            if vae_sharding or fast_path_level is not None or npu_vae_norm:
+                raise ValueError("Native Wan norm requires unsharded VAE and no other norm/decoder fast path")
+            from .npu_vae_native_norm import install_native_norm
+
+            logger.info("LingBot NPU native VAE norm: %d norms", install_native_norm(self.vae))
         if type(npu_vae_norm) is not bool:
             raise ValueError("lingbot_npu_vae_norm_silu must be boolean")
         if npu_vae_norm:
