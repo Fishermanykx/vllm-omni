@@ -707,6 +707,7 @@ class LingBotWorldCausalDMDPipeline(
         from .npu_quantization import online_mxfp8_config
 
         online_quant = model_config.get("lingbot_npu_online_quant")
+        self._lingbot_online_quant = online_quant
         if online_quant is not None and self.device.type not in ("npu", "privateuseone"):
             raise ValueError("lingbot_npu_online_quant requires the NPU backend")
         quant_config = online_mxfp8_config(
@@ -2393,6 +2394,19 @@ class LingBotWorldCausalDMDPipeline(
     def load_weights(self, weights: Iterable[tuple[str, torch.Tensor]]) -> set[str]:
         loader = AutoWeightsLoader(self)
         loaded = cast(set[str], loader.load_weights(weights))
+        if self._lingbot_online_quant == "mxfp8":
+            quantized = [
+                (name, module)
+                for name, module in self.transformer.named_modules()
+                if type(getattr(module, "quant_method", None)).__name__ == "NPUMxfp8OnlineLinearMethod"
+            ]
+            expected = len(self.transformer.blocks) * 8
+            if len(quantized) != expected or any(
+                module.weight.device.type == "meta" or "float8_e4m3" not in str(module.weight.dtype)
+                for _, module in quantized
+            ):
+                raise RuntimeError("LingBot online MXFP8 did not materialize all attention/FFN weights")
+            logger.info("LingBot online MXFP8: %d attention/FFN linears; conditioning/gates unchanged", expected)
         self.advance_conditioning_projection_revision()
         if self._lingbot_leased_post_attention:
             from vllm_omni.diffusion.models.lingbot_world.leased_post_attention import install
