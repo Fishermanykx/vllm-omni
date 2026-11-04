@@ -32,6 +32,8 @@ native kernels, not just the existence of Python symbols.
 * Recompute selection for each attention call using its current Q/K. No mask
   caching across diffusion steps or newly appended chunks.
 * The estimator returns an int8 keep mask with KV columns aligned to 32 blocks.
+  On A5 its BNSD tiling requires absent actual-length arrays; exact cropped
+  tensor shapes supply Q/K lengths. EQBSA receives its own length arrays.
   Crop that padding to `ceil(K/128)` and make it contiguous for EQBSA.
 * Quantization: reuse `_eagle_qbsa_quant_qkv`, Q/K INT8 in 64-token blocks,
   V per-channel FP8 E4M3. Pass V storage as int8 with its FP8 dtype descriptor.

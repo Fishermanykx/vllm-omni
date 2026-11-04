@@ -43,8 +43,10 @@ def cdf_block_mask(query: torch.Tensor, key: torch.Tensor, *, cdf: float, scale:
     mask, _counts = sparse_block_estimate(
         query=query,
         key=key,
-        actual_seq_lengths=[query.shape[2]] * query.shape[0],
-        actual_seq_lengths_kv=[key.shape[2]] * key.shape[0],
+        # A5 BNSD tiling requires absent length arrays. These tensors already
+        # contain exactly the valid tokens; their shapes encode both lengths.
+        actual_seq_lengths=None,
+        actual_seq_lengths_kv=None,
         input_layout="BNSD",
         stride=stride,
         sparse_size=BLOCK_SIZE,

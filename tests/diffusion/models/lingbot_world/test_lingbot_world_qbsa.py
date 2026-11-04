@@ -58,8 +58,8 @@ def test_native_estimator_contract_and_padding_crop(monkeypatch, q_len, k_len):
     kw = seen[0]
     assert kw["threshold"] == 0.85 and kw["row_sparse"] == 1.0
     assert kw["stride"] == 8 and kw["scale_value"] == 128**-0.5 / 8
-    assert kw["actual_seq_lengths"] == [q_len]
-    assert kw["actual_seq_lengths_kv"] == [k_len]
+    assert kw["actual_seq_lengths"] is None
+    assert kw["actual_seq_lengths_kv"] is None
     assert kw["causal"] is False and kw["keep_sink"] and kw["keep_recent"]
 
 
