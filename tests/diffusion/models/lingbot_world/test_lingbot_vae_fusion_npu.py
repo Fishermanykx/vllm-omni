@@ -38,12 +38,28 @@ def test_epilogue_matches_original_fp32_reduction(shape):
 
 
 @pytest.mark.parametrize("value", [0.0, 1e-15, -1e-15, 1e-8])
-def test_epilogue_preserves_l2_floor(value):
+@pytest.mark.parametrize("backend", ["epilogue", "full"])
+def test_norm_preserves_l2_floor(value, backend):
     module = load_kernel()
     with torch.inference_mode():
         x = torch.full((1, 96, 1, 3, 5), value, device="npu", dtype=torch.bfloat16)
         gamma = torch.ones(96, 1, 1, 1, device="npu", dtype=x.dtype)
         expected = F.silu(F.normalize(x.float(), dim=1).to(x.dtype) * math.sqrt(96) * gamma + 0.0)
-        actual = module.norm_silu(x, gamma, math.sqrt(96))
+        actual = module.norm_silu(x, gamma, math.sqrt(96), backend=backend)
         assert torch.isfinite(actual).all()
+        assert torch.equal(actual, expected)
+
+
+@pytest.mark.parametrize("channels", [96, 192, 384])
+def test_full_backend_channel_reduction_and_tail(channels):
+    module = load_kernel()
+    with torch.inference_mode():
+        # Single nonzero channel has exact L2=1; exercises channel reduction,
+        # both backend schedules, multi-batch indexing and partial spatial tiles.
+        x = torch.zeros(2, channels, 1, 3, 5, device="npu", dtype=torch.bfloat16)
+        x[:, channels - 1] = 1
+        gamma = torch.ones(channels, 1, 1, 1, device="npu", dtype=x.dtype)
+        scale = math.sqrt(channels)
+        expected = F.silu(F.normalize(x.float(), dim=1).to(x.dtype) * scale * gamma + 0.0)
+        actual = module.norm_silu(x, gamma, scale, backend="full")
         assert torch.equal(actual, expected)

@@ -22,15 +22,22 @@ def _norm_silu(self, x):
         return F.silu(self._lingbot_norm_forward(x))
     from vllm_omni.diffusion.models.lingbot_world.npu_vae_norm_triton import norm_silu
 
-    return norm_silu(x, self.gamma, self.scale)
+    return norm_silu(x, self.gamma, self.scale, backend=getattr(self, "_lingbot_norm_backend", "epilogue"))
 
 
 def _identity(self, x):
     return x
 
 
-def install_norm_silu(vae):
+def validate_norm_backend(backend):
+    if backend not in ("epilogue", "full"):
+        raise ValueError("lingbot_npu_vae_norm_backend must be epilogue or full")
+    return backend
+
+
+def install_norm_silu(vae, *, backend="epilogue"):
     """Only original diffusers norms; never reinterpret RMSNormVAE's epsilon."""
+    validate_norm_backend(backend)
     targets = []
     for block in vae.decoder.modules():
         name = type(block).__name__
@@ -64,6 +71,7 @@ def install_norm_silu(vae):
     for norms, activation in targets:
         for norm in norms:
             norm._lingbot_norm_forward = norm.forward
+            norm._lingbot_norm_backend = backend
             norm.forward = MethodType(_norm_silu, norm)
         activation.forward = MethodType(_identity, activation)
     return sum(len(norms) for norms, _ in targets)

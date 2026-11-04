@@ -42,3 +42,37 @@ Artifacts under `/mnt/share/y00958577/experiments/lingbot-a5-20261104/`:
 No four-card/full-DiT inference or video-quality acceptance is claimed. The
 adapter remains opt-in; the previous native reduction variant and older VAE
 reports are separate configurations and must not be combined as additive gains.
+
+## Experimental full boundary
+
+With `lingbot_npu_vae_norm_silu: true`, explicitly set
+`lingbot_npu_vae_norm_backend: full` to also fuse the channel reduction and SiLU.
+Omitting the backend selects `epilogue`. Supplying a backend without enabling
+the norm path is an error. Both modes remain opt-in; neither changes defaults.
+
+The full kernel uses FP32 square/sum/sqrt and the original L2 clamp, then
+BF16-rounded division, scale, gamma and SiLU. It supports tested channels
+96/192/384; other channel counts use epilogue. Spatial blocks are 64 positions,
+with SIMD for C96/C192 and SIMT for C384. C384 SIMD exceeded register capacity
+in screening. Tensor layout/autograd guards remain shared with epilogue.
+
+Changing reduction order produced approximately 0.56% relative L2 difference in
+checkpoint VAE outputs for three seeded synthetic inputs. Exploratory full
+timings were ~254ms vs ~346ms baseline, before the final layout guard. Treat
+the integrated JSON as authoritative for the committed implementation's timing.
+This backend is not recommended as a numerically exact replacement and has
+not passed video-quality acceptance. The original full kernel's compilation
+failures and all exploratory timings remain in the artifacts.
+
+Final integrated verification artifacts: `vae-fusion-integrated-results.json`,
+`probe_vae_fusion_integrated.py`, `profiles-vae-fusion-integrated-epilogue/`,
+`profiles-vae-fusion-integrated-full/`, and `vae-fusion-npu-tests.log` in the same
+server experiment directory. These are VAE-only, single-card experiments;
+the full serving pipeline/backend configuration was not exercised on four cards.
+
+Final guarded implementation, same single-card VAE case: reference 345.88ms,
+epilogue 292.15ms (15.5% lower), full 271.94ms (21.4% lower). Each has one warmup
+and three measurements. Epilogue decoder outputs were bit-identical for seeds
+42/43/44; full relative L2 was 0.00561–0.00567. Baseline repeated against itself
+was bit-identical. Full is only ~6.9% faster than epilogue, with an additional
+numerical change; prefer epilogue until video-level quality is accepted.

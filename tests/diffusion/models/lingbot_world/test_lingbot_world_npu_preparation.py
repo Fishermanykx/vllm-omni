@@ -128,3 +128,24 @@ def test_vae_norm_installer_matches_real_diffusers_structure_and_preserves_param
     torch.testing.assert_close(module._norm_silu(fresh, x), expected, atol=0, rtol=0)
     with pytest.raises(ValueError, match="already installed"):
         module.install_norm_silu(vae)
+
+
+@pytest.mark.parametrize("backend", [None, True, 0, "fast", "FULL"])
+def test_vae_norm_backend_rejects_invalid_selection(backend):
+    module = load("npu_vae_norm")
+    with pytest.raises(ValueError, match="epilogue or full"):
+        module.install_norm_silu(None, backend=backend)
+
+
+def test_vae_full_backend_is_explicit_and_preserves_checkpoint_names():
+    from diffusers import AutoencoderKLWan
+
+    module = load("npu_vae_norm")
+    with torch.device("meta"):
+        vae = AutoencoderKLWan()
+    names = set(vae.state_dict())
+    count = module.install_norm_silu(vae, backend="full")
+    selected = [m for m in vae.decoder.modules() if hasattr(m, "_lingbot_norm_backend")]
+    assert len(selected) == count
+    assert all(m._lingbot_norm_backend == "full" for m in selected)
+    assert set(vae.state_dict()) == names

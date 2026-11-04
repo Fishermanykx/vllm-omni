@@ -814,9 +814,16 @@ class LingBotWorldCausalDMDPipeline(
         if npu_vae_norm:
             if vae_sharding or fast_path_level is not None:
                 raise ValueError("NPU VAE norm fusion requires unsharded VAE and no other decoder fast path")
-            from .npu_vae_norm import install_norm_silu
+            from .npu_vae_norm import install_norm_silu, validate_norm_backend
 
-            logger.info("LingBot NPU VAE norm+SiLU: %d pairs", install_norm_silu(self.vae))
+            norm_backend = validate_norm_backend(model_config.get("lingbot_npu_vae_norm_backend", "epilogue"))
+            logger.info(
+                "LingBot NPU VAE norm+SiLU (%s): %d pairs",
+                norm_backend,
+                install_norm_silu(self.vae, backend=norm_backend),
+            )
+        elif "lingbot_npu_vae_norm_backend" in model_config:
+            raise ValueError("lingbot_npu_vae_norm_backend requires lingbot_npu_vae_norm_silu")
         if fast_path_level is not None:
             # Install after sharding so its conv wrappers get persistent buffers. The VAE parameters
             # already use the stage dtype, so no autocast parameter cast is needed.
