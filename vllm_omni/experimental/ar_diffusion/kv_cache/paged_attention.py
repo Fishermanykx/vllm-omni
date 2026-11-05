@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import os
 import weakref
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, ClassVar, NamedTuple
@@ -783,6 +784,17 @@ def _npu_paged_attention(
         kv_len = int(seq_lens[0].item())
         actual_seq_q = (query_start_loc[1:] - query_start_loc[:-1]).to(torch.int32).cpu().tolist()
         actual_seq_kv = seq_lens.to(torch.int32).cpu().tolist()
+    fp8_fia_mode = os.environ.get("VLLM_OMNI_AR_DIFFUSION_FP8_FIA_MODE")
+    if fp8_fia_mode:
+        if fp8_fia_mode != "C8V16_TILING512":
+            raise ValueError("FP8 FIA mode must be C8V16_TILING512")
+        if npu_qbsa_cdf:
+            raise ValueError("Dense FP8 EagleFIA and EQBSA are mutually exclusive")
+        from vllm_omni.diffusion.models.lingbot_world.npu_fp8_fia import eagle_fp8_fia
+
+        return eagle_fp8_fia(
+            query_flat, gathered_k[:kv_len], gathered_v[:kv_len], scale=softmax_scale
+        ).reshape(query.shape)
     if npu_qbsa_cdf:
         from vllm_omni.diffusion.models.lingbot_world.npu_qbsa import eagle_qbsa_attention
 
@@ -840,6 +852,8 @@ def ar_diffusion_paged_attention(
         query_flat = query
 
     if query_flat.device.type == "npu":
+        if causal and os.environ.get("VLLM_OMNI_AR_DIFFUSION_FP8_FIA_MODE"):
+            raise ValueError("Dense FP8 EagleFIA currently requires noncausal block attention")
         if npu_qbsa_cdf and causal:
             raise ValueError("LingBot QBSA requires noncausal attention within the current block")
         return _npu_paged_attention(
