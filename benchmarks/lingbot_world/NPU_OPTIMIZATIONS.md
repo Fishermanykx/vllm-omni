@@ -1,5 +1,10 @@
 # LingBot-World v2 NPU optimization series
 
+Subsequent timestep cleanup removes the seven ordinary compute AICPU types
+using FP64 host-prepared frequencies. Both optimized presets enable
+`lingbot_npu_host_timestep`; HCCL is unchanged. See
+[single-NPU precision and Level1 verification](AICPU_TIMESTEP_NPU.md).
+
 This branch collects the measured NPU paths on base `7afd00e98` rather than
 all experimental implementations. Nothing changes the default precision policy.
 The checkpoint is the causal-fast 14B diffusers package. The measured workload

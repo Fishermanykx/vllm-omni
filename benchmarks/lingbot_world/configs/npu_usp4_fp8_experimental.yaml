@@ -30,6 +30,7 @@ stages:
       ar_diffusion_height: 464
       ar_diffusion_width: 832
       lingbot_npu_host_lengths: true
+      lingbot_npu_host_timestep: true
       lingbot_cache_block_conditions: true
       lingbot_npu_fused_rmsnorm: true
       lingbot_npu_online_quant: mxfp8
